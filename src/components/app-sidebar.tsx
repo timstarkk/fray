@@ -108,6 +108,7 @@ export function AppSidebar({
             model,
           }),
         })
+        if (!res.ok) throw new Error("Expansion failed")
         const expanded = await res.json()
         onAdd({
           name: trimmedName,
@@ -156,7 +157,7 @@ export function AppSidebar({
       <Sidebar>
         <SidebarHeader className="p-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Brainstorm Room</h2>
+            <h2 className="text-lg font-semibold">Fray</h2>
             <Badge variant="secondary" className="text-xs">
               {activeCount} active
             </Badge>

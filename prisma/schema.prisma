@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  cognitoSub   String   @unique @map("cognito_sub")
+  email        String   @unique
+  pinnedModels Json     @default("[]") @map("pinned_models")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  apiKeys       ApiKey[]
+  personas      Persona[]
+  conversations Conversation[]
+
+  @@map("users")
+}
+
+model ApiKey {
+  id           String @id @default(cuid())
+  userId       String @map("user_id")
+  provider     String @default("openrouter")
+  encryptedKey String @map("encrypted_key")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@map("api_keys")
+}
+
+model Persona {
+  id           String   @id @default(cuid())
+  userId       String?  @map("user_id")
+  name         String
+  emoji        String
+  color        String   @default("slate")
+  role         String
+  systemPrompt String   @map("system_prompt")
+  canSearch    Boolean  @default(false) @map("can_search")
+  isDefault    Boolean  @default(false) @map("is_default")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user                 User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationPersonas ConversationPersona[]
+  messages             Message[]
+
+  @@map("personas")
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  title     String   @default("New Conversation")
+  model     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  personas ConversationPersona[]
+  messages Message[]
+
+  @@map("conversations")
+}
+
+model ConversationPersona {
+  conversationId String @map("conversation_id")
+  personaId      String @map("persona_id")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  persona      Persona      @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, personaId])
+  @@map("conversation_personas")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  personaId      String?  @map("persona_id")
+  content        String
+  responseType   String?  @map("response_type")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  persona      Persona?     @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
