@@ -28,6 +28,7 @@ type ChatAreaProps = {
   messages: ChatMessage[]
   pendingPersonas: Set<string>
   isLoading: boolean
+  messagesLoading: boolean
   personas: Persona[]
   model: string
   onModelChange: (model: string) => void
@@ -82,6 +83,7 @@ export function ChatArea({
   messages,
   pendingPersonas,
   isLoading,
+  messagesLoading,
   personas,
   model,
   onModelChange,
@@ -131,13 +133,13 @@ export function ChatArea({
     <div className="flex flex-1 flex-col">
       <ChatContainerRoot className="flex-1 p-4">
         <ChatContainerContent className="gap-4 max-w-3xl mx-auto w-full">
-          {turns.length === 0 ? (
+          {turns.length === 0 && !messagesLoading ? (
             <div className="flex-1 flex items-center justify-center">
               <p className="text-muted-foreground text-sm">
                 Start a conversation. Your active personas will join in.
               </p>
             </div>
-          ) : (
+          ) : turns.length === 0 ? null : (
             turns.map((turn) => (
               <div key={turn.userMessage.id} className="flex flex-col gap-3">
                 <UserMessage content={turn.userMessage.content} />

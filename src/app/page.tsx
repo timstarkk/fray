@@ -11,14 +11,34 @@ import { useOllamaDetection } from "@/hooks/use-ollama-detection"
 import { signOut } from "aws-amplify/auth"
 import { useRouter } from "next/navigation"
 import type { ModelInfo } from "@/app/api/models/route"
+import type { ConversationSummary } from "@/lib/chat-types"
 
 export default function Home() {
-  const router = useRouter()
-  const { personas, activePersonas, togglePersona, addPersona, updatePersona, removePersona } =
-    usePersonas()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
-  // Model state
-  const [model, setModel] = useState("local/qwen3:32b")
+  const router = useRouter()
+  const {
+    personas,
+    activePersonas,
+    loaded: personasLoaded,
+    togglePersona,
+    addPersona,
+    updatePersona,
+    removePersona,
+    setActivePersonaIds,
+  } = usePersonas()
+
+  // Model state — restore from localStorage
+  const [model, setModel] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("fray-model") || "local/qwen3:32b"
+    }
+    return "local/qwen3:32b"
+  })
+  useEffect(() => {
+    localStorage.setItem("fray-model", model)
+  }, [model])
   const [pinnedModelIds, setPinnedModelIds] = useState<string[]>([])
   const [cloudModels, setCloudModels] = useState<ModelInfo[]>([])
   const [hasApiKey, setHasApiKey] = useState(false)
@@ -27,10 +47,83 @@ export default function Home() {
   const [pinnedLoaded, setPinnedLoaded] = useState(false)
   const autoPinnedRef = useRef(false)
 
+  // Conversation state — restore active conversation from localStorage
+  const [conversationId, setConversationId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("fray-conversation")
+    }
+    return null
+  })
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  useEffect(() => {
+    if (conversationId) {
+      localStorage.setItem("fray-conversation", conversationId)
+    } else {
+      localStorage.removeItem("fray-conversation")
+    }
+  }, [conversationId])
+
   const { localModels } = useOllamaDetection()
 
-  const { messages, pendingPersonas, isLoading, sendMessage, clearChat } =
-    useChatSession(activePersonas, model)
+  const handleConversationCreated = useCallback(
+    (id: string) => {
+      setConversationId(id)
+    },
+    []
+  )
+
+  const handleConversationLoaded = useCallback(
+    (personaIds: string[], convModel: string) => {
+      setActivePersonaIds(personaIds)
+      setModel(convModel)
+    },
+    [setActivePersonaIds]
+  )
+
+  const { messages, pendingPersonas, isLoading, messagesLoading, sendMessage, clearChat } =
+    useChatSession(
+      activePersonas,
+      model,
+      conversationId,
+      handleConversationCreated,
+      handleConversationLoaded
+    )
+
+  // Update conversation title in sidebar when first message is sent
+  useEffect(() => {
+    if (messages.length === 1 && messages[0].role === "user" && conversationId) {
+      const firstMsg = messages[0].content
+      const title =
+        firstMsg.length > 50
+          ? firstMsg.substring(0, 47) + "..."
+          : firstMsg
+      setConversations((prev) => {
+        // Add if not present (just created), or update title
+        const exists = prev.some((c) => c.id === conversationId)
+        if (!exists) {
+          return [
+            { id: conversationId, title, model, createdAt: new Date().toISOString() },
+            ...prev,
+          ]
+        }
+        return prev.map((c) =>
+          c.id === conversationId ? { ...c, title } : c
+        )
+      })
+    }
+  }, [messages, conversationId, model])
+
+  // Load conversations list on mount
+  useEffect(() => {
+    fetch("/api/conversations")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setConversations(data)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   // Load pinned models and API key status on mount
   useEffect(() => {
@@ -62,7 +155,6 @@ export default function Home() {
     setPinnedModelIds(localIds)
     savePinnedModels(localIds)
 
-    // Default to the first local model
     if (localIds.length > 0) {
       setModel(localIds[0])
     }
@@ -96,12 +188,14 @@ export default function Home() {
     .map((id) => modelMap.get(id))
     .filter((m): m is ModelInfo => m !== undefined)
 
-  // If current model isn't available, fall back to first pinned
+  // If current local model isn't available, fall back to first pinned.
+  // Cloud models load async so never auto-switch away from them.
   useEffect(() => {
+    if (model.startsWith("openrouter/")) return
     if (pinnedModels.length > 0 && !modelMap.has(model)) {
       setModel(pinnedModels[0].id)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pinnedModels.length])
 
   const savePinnedModels = async (ids: string[]) => {
@@ -135,13 +229,47 @@ export default function Home() {
     await fetch("/api/settings/api-key", { method: "DELETE" })
     setHasApiKey(false)
     setCloudModels([])
-    // Remove cloud model pins
     setPinnedModelIds((prev) => {
       const next = prev.filter((id) => !id.startsWith("openrouter/"))
       savePinnedModels(next)
       return next
     })
   }
+
+  const handleNewChat = useCallback(() => {
+    setConversationId(null)
+    clearChat()
+    // Reset to default persona selection (first 3)
+    if (personasLoaded && personas.length > 0) {
+      const defaultIds = personas.slice(0, 3).map((p) => p.id)
+      setActivePersonaIds(defaultIds)
+    }
+  }, [clearChat, personasLoaded, personas, setActivePersonaIds])
+
+  const handleSelectConversation = useCallback(
+    (id: string) => {
+      if (id === conversationId) return
+      setConversationId(id)
+      // The hook will load messages and call onConversationLoaded with persona IDs and model
+    },
+    [conversationId]
+  )
+
+  const handleDeleteConversation = useCallback(
+    async (id: string) => {
+      await fetch(`/api/conversations/${id}`, { method: "DELETE" }).catch(
+        () => {}
+      )
+      setConversations((prev) => prev.filter((c) => c.id !== id))
+      if (id === conversationId) {
+        setConversationId(null)
+        clearChat()
+      }
+    },
+    [conversationId, clearChat]
+  )
+
+  if (!mounted) return null
 
   return (
     <SidebarProvider>
@@ -153,6 +281,11 @@ export default function Home() {
         onAdd={addPersona}
         onUpdate={updatePersona}
         onRemove={removePersona}
+        conversations={conversations}
+        activeConversationId={conversationId}
+        onSelectConversation={handleSelectConversation}
+        onNewChat={handleNewChat}
+        onDeleteConversation={handleDeleteConversation}
       />
       <SidebarInset>
         <header className="flex h-12 items-center justify-between border-b px-4">
@@ -161,12 +294,12 @@ export default function Home() {
             <h1 className="text-sm font-medium">Fray</h1>
           </div>
           <div className="flex items-center gap-3">
-            {messages.length > 0 && (
+            {(messages.length > 0 || conversationId) && (
               <button
-                onClick={clearChat}
+                onClick={handleNewChat}
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
-                Clear chat
+                New chat
               </button>
             )}
             <button
@@ -185,6 +318,7 @@ export default function Home() {
           messages={messages}
           pendingPersonas={pendingPersonas}
           isLoading={isLoading}
+          messagesLoading={messagesLoading}
           personas={personas}
           model={model}
           onModelChange={setModel}

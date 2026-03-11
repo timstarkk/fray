@@ -14,3 +14,10 @@ export type ChatMessage =
       response: PersonaResponse
       timestamp: Date
     }
+
+export type ConversationSummary = {
+  id: string
+  title: string
+  model: string
+  createdAt: string
+}

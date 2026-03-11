@@ -17,8 +17,15 @@ import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { XIcon, PlusIcon, LoaderIcon, PencilIcon } from "lucide-react"
+import {
+  PlusIcon,
+  LoaderIcon,
+  PencilIcon,
+  MessageSquareIcon,
+  TrashIcon,
+} from "lucide-react"
 import { type Persona } from "@/lib/personas"
+import { type ConversationSummary } from "@/lib/chat-types"
 
 type AppSidebarProps = {
   personas: Persona[]
@@ -30,12 +37,17 @@ type AppSidebarProps = {
     emoji: string
     role: string
     systemPrompt: string
-  }) => void
+  }) => Promise<void>
   onUpdate: (
     id: string,
     updates: { name?: string; emoji?: string; role?: string; systemPrompt?: string }
-  ) => void
+  ) => Promise<void>
   onRemove: (id: string) => void
+  conversations: ConversationSummary[]
+  activeConversationId: string | null
+  onSelectConversation: (id: string) => void
+  onNewChat: () => void
+  onDeleteConversation: (id: string) => void
 }
 
 const WORD_THRESHOLD = 20
@@ -50,6 +62,21 @@ type ModalState =
   | { mode: "create" }
   | { mode: "edit"; persona: Persona }
 
+function timeAgo(dateStr: string): string {
+  const now = Date.now()
+  const then = new Date(dateStr).getTime()
+  const seconds = Math.floor((now - then) / 1000)
+
+  if (seconds < 60) return "just now"
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return new Date(dateStr).toLocaleDateString()
+}
+
 export function AppSidebar({
   personas,
   activeCount,
@@ -58,14 +85,21 @@ export function AppSidebar({
   onAdd,
   onUpdate,
   onRemove,
+  conversations,
+  activeConversationId,
+  onSelectConversation,
+  onNewChat,
+  onDeleteConversation,
 }: AppSidebarProps) {
   const [modal, setModal] = useState<ModalState>({ mode: "closed" })
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [pending, setPending] = useState<PendingPersona[]>([])
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [confirmDeletePersonaId, setConfirmDeletePersonaId] = useState<string | null>(null)
 
-  const defaultPersonas = personas.filter((p) => !p.custom)
-  const customPersonas = personas.filter((p) => p.custom)
+  const defaultPersonas = personas.filter((p) => p.isDefault)
+  const customPersonas = personas.filter((p) => !p.isDefault)
 
   const openCreate = () => {
     setName("")
@@ -110,14 +144,14 @@ export function AppSidebar({
         })
         if (!res.ok) throw new Error("Expansion failed")
         const expanded = await res.json()
-        onAdd({
+        await onAdd({
           name: trimmedName,
           emoji: expanded.emoji || "🤖",
           role: expanded.role || "Custom",
           systemPrompt: expanded.systemPrompt || trimmedDesc || trimmedName,
         })
       } catch {
-        onAdd({
+        await onAdd({
           name: trimmedName,
           emoji: "🤖",
           role: "Custom",
@@ -125,7 +159,7 @@ export function AppSidebar({
         })
       }
     } else {
-      onAdd({
+      await onAdd({
         name: trimmedName,
         emoji: "🤖",
         role: "Custom",
@@ -136,13 +170,13 @@ export function AppSidebar({
     setPending((prev) => prev.filter((p) => p.id !== pendingId))
   }
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (modal.mode !== "edit") return
     const trimmedName = name.trim()
     const trimmedDesc = description.trim()
     if (!trimmedName) return
 
-    onUpdate(modal.persona.id, {
+    await onUpdate(modal.persona.id, {
       name: trimmedName,
       systemPrompt: trimmedDesc,
     })
@@ -165,6 +199,70 @@ export function AppSidebar({
         </SidebarHeader>
 
         <SidebarContent>
+          {/* Conversations section */}
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center justify-between">
+              <span>Conversations</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 px-1.5 text-xs"
+                onClick={onNewChat}
+              >
+                <PlusIcon className="size-3 mr-0.5" />
+                New
+              </Button>
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {conversations.length === 0 ? (
+                  <SidebarMenuItem>
+                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                      No conversations yet
+                    </p>
+                  </SidebarMenuItem>
+                ) : (
+                  conversations.map((conv) => (
+                    <SidebarMenuItem key={conv.id}>
+                      <button
+                        onClick={() => onSelectConversation(conv.id)}
+                        className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-left group transition-colors ${
+                          conv.id === activeConversationId
+                            ? "bg-secondary"
+                            : "hover:bg-secondary/50"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <p className="text-sm truncate">{conv.title}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {timeAgo(conv.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setConfirmDeleteId(conv.id)
+                          }}
+                        >
+                          <TrashIcon className="size-3" />
+                        </Button>
+                      </button>
+                    </SidebarMenuItem>
+                  ))
+                )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarSeparator />
+
+          {/* Personas section */}
           <SidebarGroup>
             <SidebarGroupLabel>Personas</SidebarGroupLabel>
             <SidebarGroupContent>
@@ -192,7 +290,7 @@ export function AppSidebar({
                         key={persona.id}
                         persona={persona}
                         onToggle={onToggle}
-                        onRemove={onRemove}
+                        onRemove={() => setConfirmDeletePersonaId(persona.id)}
                         onEdit={() => openEdit(persona)}
                       />
                     ))}
@@ -231,6 +329,80 @@ export function AppSidebar({
           </Button>
         </SidebarFooter>
       </Sidebar>
+
+      {confirmDeletePersonaId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          onClick={() => setConfirmDeletePersonaId(null)}
+        >
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative bg-card border rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold mb-1">Delete persona?</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              This will permanently delete this custom persona.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmDeletePersonaId(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  onRemove(confirmDeletePersonaId)
+                  setConfirmDeletePersonaId(null)
+                }}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          onClick={() => setConfirmDeleteId(null)}
+        >
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative bg-card border rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold mb-1">Delete conversation?</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              This will permanently delete this conversation and all its messages.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmDeleteId(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  onDeleteConversation(confirmDeleteId)
+                  setConfirmDeleteId(null)
+                }}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isOpen && (
         <div
@@ -310,7 +482,7 @@ function PersonaRow({
 }: {
   persona: Persona
   onToggle: (id: string) => void
-  onRemove?: (id: string) => void
+  onRemove?: () => void
   onEdit?: () => void
 }) {
   return (
@@ -339,9 +511,9 @@ function PersonaRow({
               variant="ghost"
               size="sm"
               className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={() => onRemove(persona.id)}
+              onClick={onRemove}
             >
-              <XIcon className="size-3" />
+              <TrashIcon className="size-3" />
             </Button>
           )}
           <Switch

@@ -22,6 +22,13 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function generateTitle(text: string): string {
+  if (text.length <= 50) return text
+  const truncated = text.substring(0, 47)
+  const lastSpace = truncated.lastIndexOf(" ")
+  return (lastSpace > 20 ? truncated.substring(0, lastSpace) : truncated) + "..."
+}
+
 function buildTurnSummary(
   turnResponses: ChatMessage[],
   personas: Persona[]
@@ -86,7 +93,6 @@ function buildApiMessages(
 
       const content = `[${label}]: ${m.response.content}`
 
-      // Current persona's own prior messages are 'assistant', others are 'user'
       if (m.personaId === currentPersonaId) {
         return { role: "assistant" as const, content: m.response.content }
       }
@@ -101,25 +107,144 @@ function buildApiMessages(
   return mapped
 }
 
-export function useChatSession(activePersonas: Persona[], model: string) {
+type DbMessage = {
+  id: string
+  personaId: string | null
+  content: string
+  responseType: string | null
+  addressedTo: string | null
+  addressedPersonaId: string | null
+  createdAt: string
+}
+
+function dbMessageToChatMessage(msg: DbMessage): ChatMessage {
+  if (msg.personaId === null) {
+    return {
+      id: msg.id,
+      role: "user" as const,
+      content: msg.content,
+      timestamp: new Date(msg.createdAt),
+    }
+  }
+
+  return {
+    id: msg.id,
+    role: "persona" as const,
+    personaId: msg.personaId,
+    response: {
+      response_type: (msg.responseType || "full") as
+        | "full"
+        | "brief"
+        | "emoji"
+        | "silence",
+      content: msg.content,
+      addressed_to: (msg.addressedTo as "user" | "persona") || undefined,
+      addressed_persona_id: msg.addressedPersonaId || undefined,
+    },
+    timestamp: new Date(msg.createdAt),
+  }
+}
+
+export function useChatSession(
+  activePersonas: Persona[],
+  model: string,
+  conversationId: string | null,
+  onConversationCreated: (id: string) => void,
+  onConversationLoaded?: (personaIds: string[], model: string) => void
+) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [pendingPersonas, setPendingPersonas] = useState<Set<string>>(
     new Set()
   )
   const [isLoading, setIsLoading] = useState(false)
+  const [messagesLoading, setMessagesLoading] = useState(!!conversationId)
+
   const activePersonasRef = useRef(activePersonas)
   const modelRef = useRef(model)
+  const conversationIdRef = useRef(conversationId)
+  const onConversationCreatedRef = useRef(onConversationCreated)
+  const onConversationLoadedRef = useRef(onConversationLoaded)
+  const justCreatedRef = useRef(false)
+
   useEffect(() => {
     activePersonasRef.current = activePersonas
   }, [activePersonas])
   useEffect(() => {
     modelRef.current = model
   }, [model])
+  useEffect(() => {
+    conversationIdRef.current = conversationId
+  }, [conversationId])
+  useEffect(() => {
+    onConversationCreatedRef.current = onConversationCreated
+  }, [onConversationCreated])
+  useEffect(() => {
+    onConversationLoadedRef.current = onConversationLoaded
+  }, [onConversationLoaded])
+
+  // Load messages when conversation changes (skip if we just created it)
+  useEffect(() => {
+    if (conversationId) {
+      if (justCreatedRef.current) {
+        justCreatedRef.current = false
+        setMessagesLoading(false)
+        return
+      }
+      setMessagesLoading(true)
+      fetch(`/api/conversations/${conversationId}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.messages) {
+            setMessages(data.messages.map(dbMessageToChatMessage))
+          }
+          // Notify parent about loaded conversation metadata
+          if (onConversationLoadedRef.current && data.personas) {
+            onConversationLoadedRef.current(
+              data.personas.map(
+                (p: { personaId: string }) => p.personaId
+              ),
+              data.model
+            )
+          }
+        })
+        .catch(() => setMessages([]))
+        .finally(() => setMessagesLoading(false))
+    } else {
+      setMessages([])
+      setMessagesLoading(false)
+    }
+  }, [conversationId])
 
   const sendMessage = useCallback(
     async (text: string) => {
       const personas = activePersonasRef.current
       if (personas.length === 0) return
+
+      let convId = conversationIdRef.current
+
+      // Create conversation if none exists
+      if (!convId) {
+        try {
+          const res = await fetch("/api/conversations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: generateTitle(text),
+              model: modelRef.current,
+              personaIds: personas.map((p) => p.id),
+            }),
+          })
+          const conv = await res.json()
+          const newId: string = conv.id
+          convId = newId
+          conversationIdRef.current = newId
+          justCreatedRef.current = true
+          onConversationCreatedRef.current(newId)
+        } catch (err) {
+          console.error("Failed to create conversation:", err)
+          return
+        }
+      }
 
       const userMsg: ChatMessage = {
         id: uuid(),
@@ -146,7 +271,6 @@ export function useChatSession(activePersonas: Persona[], model: string) {
 
         await sleep(Math.max(delay, 200))
 
-        // Snapshot current messages + this turn's responses
         const allMessages = await new Promise<ChatMessage[]>((resolve) => {
           setMessages((prev) => {
             resolve([...prev])
@@ -154,8 +278,6 @@ export function useChatSession(activePersonas: Persona[], model: string) {
           })
         })
 
-        // turnResponses are already in allMessages via setMessages calls,
-        // but we rebuild from our tracked list for ordering consistency
         const historyBeforeTurn = allMessages.filter(
           (m) => !turnResponses.some((tr) => tr.id === m.id)
         )
@@ -178,9 +300,12 @@ export function useChatSession(activePersonas: Persona[], model: string) {
               persona,
               allPersonas: personas,
               model: modelRef.current,
+              conversationId: convId,
+              userMessage: i === 0 ? text : undefined,
             }),
           })
 
+          if (!res.ok) throw new Error(`API ${res.status}`)
           const response: PersonaResponse = await res.json()
 
           if (response.response_type !== "silence") {
@@ -207,7 +332,7 @@ export function useChatSession(activePersonas: Persona[], model: string) {
 
       setIsLoading(false)
     },
-    [] // activePersonas accessed via ref
+    [] // all dependencies accessed via refs
   )
 
   const clearChat = useCallback(() => {
@@ -220,6 +345,7 @@ export function useChatSession(activePersonas: Persona[], model: string) {
     messages,
     pendingPersonas,
     isLoading,
+    messagesLoading,
     sendMessage,
     clearChat,
   }

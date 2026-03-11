@@ -1,16 +1,30 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
-import { type Persona, DEFAULT_PERSONAS } from "@/lib/personas"
+import { useState, useMemo, useCallback, useEffect } from "react"
+import { type Persona } from "@/lib/personas"
 
 export function usePersonas() {
-  const [personas, setPersonas] = useState<Persona[]>(() =>
-    DEFAULT_PERSONAS.map((p, i) => ({
-      ...p,
-      active: i < 3,
-      custom: false,
-    }))
-  )
+  const [personas, setPersonas] = useState<Persona[]>([])
+  const [loaded, setLoaded] = useState(false)
+
+  // Load personas from API on mount
+  useEffect(() => {
+    fetch("/api/personas")
+      .then((r) => r.json())
+      .then((data) => {
+        setPersonas(
+          data.map((p: Persona, i: number) => ({
+            ...p,
+            active: i < 3,
+          }))
+        )
+        setLoaded(true)
+      })
+      .catch((err) => {
+        console.error("Failed to load personas:", err)
+        setLoaded(true)
+      })
+  }, [])
 
   const togglePersona = useCallback((id: string) => {
     setPersonas((prev) =>
@@ -19,42 +33,57 @@ export function usePersonas() {
   }, [])
 
   const addPersona = useCallback(
-    (persona: {
+    async (persona: {
       name: string
       emoji: string
       role: string
       systemPrompt: string
     }) => {
-      const id = `custom-${Date.now()}`
-      const newPersona: Persona = {
-        id,
-        name: persona.name,
-        emoji: persona.emoji,
-        color: "slate",
-        role: persona.role,
-        systemPrompt: persona.systemPrompt,
-        active: true,
-        custom: true,
-      }
-      setPersonas((prev) => [...prev, newPersona])
+      const res = await fetch("/api/personas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...persona, color: "slate" }),
+      })
+      if (!res.ok) throw new Error("Failed to create persona")
+      const created = await res.json()
+      setPersonas((prev) => [...prev, { ...created, active: true }])
     },
     []
   )
 
   const updatePersona = useCallback(
-    (
+    async (
       id: string,
-      updates: { name?: string; emoji?: string; role?: string; systemPrompt?: string }
+      updates: {
+        name?: string
+        emoji?: string
+        role?: string
+        systemPrompt?: string
+      }
     ) => {
+      const res = await fetch(`/api/personas/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      })
+      if (!res.ok) throw new Error("Failed to update persona")
       setPersonas((prev) =>
-        prev.map((p) => (p.id === id && p.custom ? { ...p, ...updates } : p))
+        prev.map((p) => (p.id === id ? { ...p, ...updates } : p))
       )
     },
     []
   )
 
-  const removePersona = useCallback((id: string) => {
-    setPersonas((prev) => prev.filter((p) => !(p.id === id && p.custom)))
+  const removePersona = useCallback(async (id: string) => {
+    await fetch(`/api/personas/${id}`, { method: "DELETE" })
+    setPersonas((prev) => prev.filter((p) => p.id !== id))
+  }, [])
+
+  const setActivePersonaIds = useCallback((ids: string[]) => {
+    const idSet = new Set(ids)
+    setPersonas((prev) =>
+      prev.map((p) => ({ ...p, active: idSet.has(p.id) }))
+    )
   }, [])
 
   const activePersonas = useMemo(
@@ -65,9 +94,11 @@ export function usePersonas() {
   return {
     personas,
     activePersonas,
+    loaded,
     togglePersona,
     addPersona,
     updatePersona,
     removePersona,
+    setActivePersonaIds,
   }
 }

@@ -79,15 +79,17 @@ model ConversationPersona {
 }
 
 model Message {
-  id             String   @id @default(cuid())
-  conversationId String   @map("conversation_id")
-  personaId      String?  @map("persona_id")
-  content        String
-  responseType   String?  @map("response_type")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id                 String   @id @default(cuid())
+  conversationId     String   @map("conversation_id")
+  personaId          String?  @map("persona_id")
+  content            String
+  responseType       String?  @map("response_type")
+  addressedTo        String?  @map("addressed_to")
+  addressedPersonaId String?  @map("addressed_persona_id")
+  createdAt          DateTime @default(now()) @map("created_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  persona      Persona?     @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  persona      Persona?     @relation(fields: [personaId], references: [id], onDelete: SetNull)
 
   @@map("messages")
 }

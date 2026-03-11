@@ -5,11 +5,12 @@ export type Persona = {
   color: string
   role: string
   systemPrompt: string
+  canSearch: boolean
+  isDefault: boolean
   active: boolean
-  custom: boolean
 }
 
-export const DEFAULT_PERSONAS: Omit<Persona, "active" | "custom">[] = [
+export const DEFAULT_PERSONAS: Omit<Persona, "active" | "canSearch" | "isDefault">[] = [
   {
     id: "devils-advocate",
     name: "Devil's Advocate",
