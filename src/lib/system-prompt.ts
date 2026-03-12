@@ -11,7 +11,7 @@ export function buildPersonaSystemPrompt(
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
 
-  return `You are ${persona.name} in a group brainstorming chat. ${persona.systemPrompt}
+  return `You are ${persona.name} in a group chat. ${persona.systemPrompt}
 
 Today's date is ${today}.
 

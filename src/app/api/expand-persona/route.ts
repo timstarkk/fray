@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
   const { output } = await generateText({
     model: getModel(modelId, openRouterKey),
-    system: `You are a persona designer. Given a name and short description of a character or role, generate a rich persona definition for use in a group brainstorming chat. The persona should have a clear point of view, distinct voice, and specific areas of expertise or concern. If the input references a fictional character, capture their personality and worldview. If it's a role description, flesh it out with attitude and specifics.${modelId.startsWith("local/") ? "\n\n/no_think" : ""}`,
+    system: `You are a persona designer. Given a name and short description of a character or role, generate a rich persona definition for use in a multi-perspective group chat. The persona should have a clear point of view, distinct voice, and specific areas of expertise or concern. If the input references a fictional character, capture their personality and worldview. If it's a role description, flesh it out with attitude and specifics.${modelId.startsWith("local/") ? "\n\n/no_think" : ""}`,
     messages: [
       {
         role: "user",
