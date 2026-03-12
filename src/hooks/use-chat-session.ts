@@ -77,6 +77,7 @@ function buildApiMessages(
 
   const mapped = messages
     .filter((m) => {
+      if (m.role === "system") return false
       if (m.role === "persona" && m.response.response_type === "silence")
         return false
       return true
@@ -84,6 +85,9 @@ function buildApiMessages(
     .map((m) => {
       if (m.role === "user") {
         return { role: "user" as const, content: m.content }
+      }
+      if (m.role !== "persona") {
+        return { role: "user" as const, content: "" }
       }
 
       const persona = personaMap.get(m.personaId)
@@ -340,7 +344,7 @@ export function useChatSession(
             sharedSearchResults = `[WEB SEARCH RESULTS (from ${persona.name}'s search — use these facts if relevant, do not search again):\n${searchResults.join("\n")}]`
           }
 
-          if (response.response_type !== "silence") {
+          if (response.response_type !== "silence" && response.content) {
             const personaMsg: ChatMessage = {
               id: uuid(),
               role: "persona",
@@ -361,6 +365,18 @@ export function useChatSession(
           next.delete(persona.id)
           return next
         })
+      }
+
+      if (turnResponses.length === 0) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uuid(),
+            role: "system" as const,
+            content: "No personas could respond. The selected model may not be compatible — try switching to a different model.",
+            timestamp: new Date(),
+          },
+        ])
       }
 
       setPendingConvId(null)

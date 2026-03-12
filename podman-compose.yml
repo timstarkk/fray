@@ -1,0 +1,47 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        - NEXT_PUBLIC_COGNITO_USER_POOL_ID=${NEXT_PUBLIC_COGNITO_USER_POOL_ID}
+        - NEXT_PUBLIC_COGNITO_CLIENT_ID=${NEXT_PUBLIC_COGNITO_CLIENT_ID}
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://fray:fray@db:5432/fray
+      - SEARXNG_URL=http://searxng:8080
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - NEXT_PUBLIC_COGNITO_USER_POOL_ID=${NEXT_PUBLIC_COGNITO_USER_POOL_ID}
+      - NEXT_PUBLIC_COGNITO_CLIENT_ID=${NEXT_PUBLIC_COGNITO_CLIENT_ID}
+      - OLLAMA_HOST=http://host.containers.internal:11434
+    depends_on:
+      db:
+        condition: service_healthy
+      searxng:
+        condition: service_started
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=fray
+      - POSTGRES_PASSWORD=fray
+      - POSTGRES_DB=fray
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fray"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  searxng:
+    image: searxng/searxng:latest
+    volumes:
+      - ./searxng:/etc/searxng
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:

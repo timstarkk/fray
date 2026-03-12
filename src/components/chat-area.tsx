@@ -47,6 +47,7 @@ type MessageTurn = {
     brief: (ChatMessage & { role: "persona" })[]
     emoji: (ChatMessage & { role: "persona" })[]
   }
+  systemMessage?: string
 }
 
 function getDisplayName(modelId: string): string {
@@ -76,6 +77,8 @@ function groupMessagesByTurn(messages: ChatMessage[]): MessageTurn[] {
       if (response_type === "full") current.responses.full.push(msg)
       else if (response_type === "brief") current.responses.brief.push(msg)
       else if (response_type === "emoji") current.responses.emoji.push(msg)
+    } else if (msg.role === "system" && current) {
+      current.systemMessage = msg.content
     }
   }
 
@@ -199,6 +202,12 @@ export function ChatArea({
                         })}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {turn.systemMessage && (
+                  <div className="mx-auto max-w-md text-center text-sm text-yellow-400/80 bg-yellow-400/5 border border-yellow-400/10 rounded-lg px-4 py-2.5">
+                    {turn.systemMessage}
                   </div>
                 )}
               </div>

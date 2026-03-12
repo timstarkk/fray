@@ -100,26 +100,38 @@ RULES:
       ? [...messages, { role: "user" as const, content: `[WEB SEARCH RESULTS — use these facts if relevant, cite sources:\n${searchResults.join("\n")}]` }]
       : messages
 
-    const result = await generateText({
-      model: resolvedModel,
-      system: buildPersonaSystemPrompt(persona, allPersonas),
-      messages: messagesWithSearch,
-      output: Output.object({ schema: personaResponseSchema }),
-      maxOutputTokens: 4096,
-    })
-
     let parsed: { response_type: "full" | "brief" | "emoji" | "silence"; content: string; addressed_to?: string; addressed_persona_id?: string }
+
     try {
+      const result = await generateText({
+        model: resolvedModel,
+        system: buildPersonaSystemPrompt(persona, allPersonas),
+        messages: messagesWithSearch,
+        output: Output.object({ schema: personaResponseSchema }),
+        maxOutputTokens: 4096,
+      })
       parsed = result.output ?? { response_type: "silence", content: "" }
-    } catch {
-      console.warn(`[chat] ${persona?.name} produced no valid output, treating as silence`)
-      parsed = { response_type: "silence", content: "" }
+    } catch (structuredErr) {
+      // Model can't do structured output — fall back to raw text
+      console.warn(`[chat] ${persona?.name} structured output failed, falling back to raw text`)
+      try {
+        const fallback = await generateText({
+          model: resolvedModel,
+          system: buildPersonaSystemPrompt(persona, allPersonas),
+          messages: messagesWithSearch,
+          maxOutputTokens: 4096,
+        })
+        parsed = { response_type: "full", content: fallback.text || "" }
+      } catch (fallbackErr) {
+        console.error(`[chat] ${persona?.name} raw fallback also failed:`, fallbackErr)
+        parsed = { response_type: "silence", content: "" }
+      }
     }
 
     console.log(`[chat] ${persona?.name} responded: type=${parsed?.response_type} content=${parsed?.content?.substring(0, 50)} searches=${searchResults.length}`)
 
     // Save persona response to DB (skip silence)
-    if (conversationId && parsed && parsed.response_type !== "silence") {
+    if (conversationId && parsed && parsed.response_type !== "silence" && parsed.content) {
       await prisma.message.create({
         data: {
           conversationId,

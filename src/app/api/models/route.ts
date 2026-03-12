@@ -2,6 +2,8 @@ import { getDbUser } from "@/lib/session"
 import { prisma } from "@/lib/db"
 import { decrypt } from "@/lib/encryption"
 
+const ollamaBaseURL = process.env.OLLAMA_HOST || "http://localhost:11434"
+
 export type ModelInfo = {
   id: string
   name: string
@@ -19,7 +21,7 @@ export async function GET() {
 
 async function getLocalModels(): Promise<ModelInfo[]> {
   try {
-    const res = await fetch("http://localhost:11434/api/tags")
+    const res = await fetch(`${ollamaBaseURL}/api/tags`)
     const data = await res.json()
     const models = data.models || []
 
@@ -28,7 +30,7 @@ async function getLocalModels(): Promise<ModelInfo[]> {
       models.map(async (m: { name: string }) => {
         let supportsTools = false
         try {
-          const showRes = await fetch("http://localhost:11434/api/show", {
+          const showRes = await fetch(`${ollamaBaseURL}/api/show`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name: m.name }),
