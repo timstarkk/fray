@@ -32,7 +32,7 @@ cat << EOF
   Fill in these values:
     DOMAIN=your-domain.com
     POSTGRES_USER=fray
-    POSTGRES_PASSWORD=$(openssl rand -base64 24)
+    POSTGRES_PASSWORD=$(openssl rand -hex 24)
     ENCRYPTION_KEY=$ENCRYPTION_KEY
     NEXT_PUBLIC_COGNITO_USER_POOL_ID=...
     NEXT_PUBLIC_COGNITO_CLIENT_ID=...
