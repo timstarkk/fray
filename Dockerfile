@@ -39,6 +39,9 @@ COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/dotenv ./node_modules/dotenv
 
+# Make prisma CLI accessible for migrations in production
+RUN mkdir -p node_modules/.bin && ln -s ../prisma/build/index.js node_modules/.bin/prisma
+
 USER nextjs
 EXPOSE 3000
 ENV HOSTNAME="0.0.0.0"
