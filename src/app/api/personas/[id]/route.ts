@@ -15,7 +15,7 @@ export async function PATCH(
 
   const updates = await req.json()
   // Only allow updating safe fields
-  const { name, emoji, role, systemPrompt } = updates
+  const { name, emoji, role, systemPrompt, canSearch } = updates
   const updated = await prisma.persona.update({
     where: { id },
     data: {
@@ -23,6 +23,7 @@ export async function PATCH(
       ...(emoji !== undefined && { emoji }),
       ...(role !== undefined && { role }),
       ...(systemPrompt !== undefined && { systemPrompt }),
+      ...(canSearch !== undefined && { canSearch }),
     },
   })
 

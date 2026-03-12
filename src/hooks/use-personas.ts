@@ -38,6 +38,7 @@ export function usePersonas() {
       emoji: string
       role: string
       systemPrompt: string
+      canSearch?: boolean
     }) => {
       const res = await fetch("/api/personas", {
         method: "POST",
@@ -59,6 +60,7 @@ export function usePersonas() {
         emoji?: string
         role?: string
         systemPrompt?: string
+        canSearch?: boolean
       }
     ) => {
       const res = await fetch(`/api/personas/${id}`, {

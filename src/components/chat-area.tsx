@@ -12,7 +12,7 @@ import {
   PromptInputActions,
 } from "@/components/ui/prompt-input"
 import { Button } from "@/components/ui/button"
-import { ArrowUpIcon, ChevronDownIcon, MonitorIcon, CloudIcon, SettingsIcon } from "lucide-react"
+import { ArrowUpIcon, ChevronDownIcon, MonitorIcon, CloudIcon, SettingsIcon, GlobeIcon } from "lucide-react"
 import { type ChatMessage } from "@/lib/chat-types"
 import { type Persona } from "@/lib/personas"
 import type { ModelInfo } from "@/app/api/models/route"
@@ -35,6 +35,9 @@ type ChatAreaProps = {
   pinnedModels: ModelInfo[]
   onSend: (text: string) => void
   onOpenModelBrowser: () => void
+  webSearchEnabled: boolean
+  onWebSearchToggle: () => void
+  isSearching: boolean
 }
 
 type MessageTurn = {
@@ -90,6 +93,9 @@ export function ChatArea({
   pinnedModels,
   onSend,
   onOpenModelBrowser,
+  webSearchEnabled,
+  onWebSearchToggle,
+  isSearching,
 }: ChatAreaProps) {
   const [input, setInput] = useState("")
   const [modelOpen, setModelOpen] = useState(false)
@@ -201,6 +207,12 @@ export function ChatArea({
 
           {pendingPersonas.size > 0 && (
             <div className="flex flex-col gap-1">
+              {isSearching && (
+                <div className="flex items-center gap-1.5 pl-2 text-xs text-muted-foreground">
+                  <GlobeIcon className="size-3 animate-pulse" />
+                  Searching the web...
+                </div>
+              )}
               {Array.from(pendingPersonas).map((id) => {
                 const persona = personaMap.get(id)
                 if (!persona) return null
@@ -223,6 +235,7 @@ export function ChatArea({
           >
             <PromptInputTextarea placeholder="Type your message..." />
             <PromptInputActions className="justify-between px-2 pb-2">
+              <div className="flex items-center gap-1">
               <div className="relative" ref={modelRef}>
                 <button
                   type="button"
@@ -304,6 +317,20 @@ export function ChatArea({
                     )}
                   </div>
                 )}
+              </div>
+              <button
+                type="button"
+                onClick={onWebSearchToggle}
+                className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors ${
+                  webSearchEnabled
+                    ? "text-blue-400 bg-blue-500/10 hover:bg-blue-500/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                }`}
+                title={webSearchEnabled ? "Web search enabled" : "Web search disabled"}
+              >
+                <GlobeIcon className="size-3" />
+                {webSearchEnabled && <span>Search</span>}
+              </button>
               </div>
               <Button
                 size="sm"

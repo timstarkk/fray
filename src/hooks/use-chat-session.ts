@@ -150,13 +150,15 @@ export function useChatSession(
   model: string,
   conversationId: string | null,
   onConversationCreated: (id: string) => void,
-  onConversationLoaded?: (personaIds: string[], model: string) => void
+  onConversationLoaded?: (personaIds: string[], model: string) => void,
+  webSearchEnabled?: boolean
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [pendingPersonas, setPendingPersonas] = useState<Set<string>>(
     new Set()
   )
   const [isLoading, setIsLoading] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
   const [messagesLoading, setMessagesLoading] = useState(!!conversationId)
 
   const activePersonasRef = useRef(activePersonas)
@@ -164,7 +166,9 @@ export function useChatSession(
   const conversationIdRef = useRef(conversationId)
   const onConversationCreatedRef = useRef(onConversationCreated)
   const onConversationLoadedRef = useRef(onConversationLoaded)
+  const webSearchEnabledRef = useRef(webSearchEnabled)
   const justCreatedRef = useRef(false)
+  const [pendingConvId, setPendingConvId] = useState<string | null>(null)
 
   useEffect(() => {
     activePersonasRef.current = activePersonas
@@ -181,6 +185,9 @@ export function useChatSession(
   useEffect(() => {
     onConversationLoadedRef.current = onConversationLoaded
   }, [onConversationLoaded])
+  useEffect(() => {
+    webSearchEnabledRef.current = webSearchEnabled
+  }, [webSearchEnabled])
 
   // Load messages when conversation changes (skip if we just created it)
   useEffect(() => {
@@ -255,6 +262,7 @@ export function useChatSession(
 
       setMessages((prev) => [...prev, userMsg])
       setIsLoading(true)
+      setPendingConvId(convId)
 
       const shuffled = shuffle([...personas])
       const delays = shuffled
@@ -264,6 +272,7 @@ export function useChatSession(
       setPendingPersonas(new Set(shuffled.map((p) => p.id)))
 
       const turnResponses: ChatMessage[] = []
+      let sharedSearchResults: string | null = null
 
       for (let i = 0; i < shuffled.length; i++) {
         const persona = shuffled[i]
@@ -291,6 +300,18 @@ export function useChatSession(
           turnSummary
         )
 
+        // Inject shared search results from a previous persona's search
+        if (sharedSearchResults) {
+          apiMessages.push({
+            role: "user" as const,
+            content: sharedSearchResults,
+          })
+        }
+
+        // Show "Searching..." indicator for the first persona when web search is enabled
+        const willSearch = !sharedSearchResults && webSearchEnabledRef.current && i === 0
+        if (willSearch) setIsSearching(true)
+
         try {
           const res = await fetch("/api/chat", {
             method: "POST",
@@ -302,11 +323,22 @@ export function useChatSession(
               model: modelRef.current,
               conversationId: convId,
               userMessage: i === 0 ? text : undefined,
+              webSearchEnabled: !sharedSearchResults && webSearchEnabledRef.current,
             }),
           })
 
+          if (willSearch) setIsSearching(false)
+
           if (!res.ok) throw new Error(`API ${res.status}`)
-          const response: PersonaResponse = await res.json()
+          const data = await res.json()
+          const { searchResults, ...response } = data as PersonaResponse & {
+            searchResults?: string[]
+          }
+
+          // Capture search results to share with subsequent personas
+          if (searchResults && searchResults.length > 0 && !sharedSearchResults) {
+            sharedSearchResults = `[WEB SEARCH RESULTS (from ${persona.name}'s search — use these facts if relevant, do not search again):\n${searchResults.join("\n")}]`
+          }
 
           if (response.response_type !== "silence") {
             const personaMsg: ChatMessage = {
@@ -320,6 +352,7 @@ export function useChatSession(
             setMessages((prev) => [...prev, personaMsg])
           }
         } catch (err) {
+          if (willSearch) setIsSearching(false)
           console.error(`Error calling persona ${persona.name}:`, err)
         }
 
@@ -330,6 +363,7 @@ export function useChatSession(
         })
       }
 
+      setPendingConvId(null)
       setIsLoading(false)
     },
     [] // all dependencies accessed via refs
@@ -338,13 +372,17 @@ export function useChatSession(
   const clearChat = useCallback(() => {
     setMessages([])
     setPendingPersonas(new Set())
+    setPendingConvId(null)
     setIsLoading(false)
+    setIsSearching(false)
   }, [])
 
   return {
     messages,
     pendingPersonas,
+    pendingConversationId: pendingConvId,
     isLoading,
+    isSearching,
     messagesLoading,
     sendMessage,
     clearChat,

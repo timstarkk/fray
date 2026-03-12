@@ -23,6 +23,7 @@ import {
   PencilIcon,
   MessageSquareIcon,
   TrashIcon,
+  ChevronRightIcon,
 } from "lucide-react"
 import { type Persona } from "@/lib/personas"
 import { type ConversationSummary } from "@/lib/chat-types"
@@ -37,10 +38,11 @@ type AppSidebarProps = {
     emoji: string
     role: string
     systemPrompt: string
+    canSearch?: boolean
   }) => Promise<void>
   onUpdate: (
     id: string,
-    updates: { name?: string; emoji?: string; role?: string; systemPrompt?: string }
+    updates: { name?: string; emoji?: string; role?: string; systemPrompt?: string; canSearch?: boolean }
   ) => Promise<void>
   onRemove: (id: string) => void
   conversations: ConversationSummary[]
@@ -97,9 +99,15 @@ export function AppSidebar({
   const [pending, setPending] = useState<PendingPersona[]>([])
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [confirmDeletePersonaId, setConfirmDeletePersonaId] = useState<string | null>(null)
+  const [personasManualToggle, setPersonasManualToggle] = useState<boolean | null>(null)
 
   const defaultPersonas = personas.filter((p) => p.isDefault)
   const customPersonas = personas.filter((p) => !p.isDefault)
+  const activePersonas = personas.filter((p) => p.active)
+
+  // Auto-collapse when there are 8+ total personas, but user can always override
+  const personasExpanded = personasManualToggle ?? personas.length < 8
+  const setPersonasExpanded = (v: boolean) => setPersonasManualToggle(v)
 
   const openCreate = () => {
     setName("")
@@ -198,136 +206,175 @@ export function AppSidebar({
           </div>
         </SidebarHeader>
 
-        <SidebarContent>
-          {/* Conversations section */}
-          <SidebarGroup>
-            <SidebarGroupLabel className="flex items-center justify-between">
-              <span>Conversations</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-5 px-1.5 text-xs"
-                onClick={onNewChat}
+        <SidebarContent className="flex flex-col overflow-hidden">
+          {/* Personas section — collapsible */}
+          <div className="shrink-0">
+            <SidebarGroup>
+              <SidebarGroupLabel
+                className="flex items-center justify-between cursor-pointer"
+                onClick={() => setPersonasExpanded(!personasExpanded)}
               >
-                <PlusIcon className="size-3 mr-0.5" />
-                New
-              </Button>
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {conversations.length === 0 ? (
-                  <SidebarMenuItem>
-                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                      No conversations yet
-                    </p>
-                  </SidebarMenuItem>
-                ) : (
-                  conversations.map((conv) => (
-                    <SidebarMenuItem key={conv.id}>
-                      <button
-                        onClick={() => onSelectConversation(conv.id)}
-                        className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-left group transition-colors ${
-                          conv.id === activeConversationId
-                            ? "bg-secondary"
-                            : "hover:bg-secondary/50"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0">
-                            <p className="text-sm truncate">{conv.title}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {timeAgo(conv.createdAt)}
-                            </p>
-                          </div>
+                <div className="flex items-center gap-1.5">
+                  <ChevronRightIcon className={`size-3 transition-transform ${personasExpanded ? "rotate-90" : ""}`} />
+                  <span>Personas</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 px-1.5 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openCreate()
+                  }}
+                >
+                  <PlusIcon className="size-3 mr-0.5" />
+                  New
+                </Button>
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                {personasExpanded ? (
+                  <>
+                    <SidebarMenu>
+                      {defaultPersonas.map((persona) => (
+                        <PersonaRow
+                          key={persona.id}
+                          persona={persona}
+                          onToggle={onToggle}
+                        />
+                      ))}
+                    </SidebarMenu>
+                    {(customPersonas.length > 0 || pending.length > 0) && (
+                      <>
+                        <div className="px-2 pt-2 pb-1">
+                          <p className="text-xs text-muted-foreground font-medium">Custom</p>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setConfirmDeleteId(conv.id)
-                          }}
+                        <SidebarMenu>
+                          {customPersonas.map((persona) => (
+                            <PersonaRow
+                              key={persona.id}
+                              persona={persona}
+                              onToggle={onToggle}
+                              onRemove={() => setConfirmDeletePersonaId(persona.id)}
+                              onEdit={() => openEdit(persona)}
+                            />
+                          ))}
+                          {pending.map((p) => (
+                            <SidebarMenuItem key={p.id}>
+                              <div className="flex items-center gap-2 px-2 py-1.5">
+                                <LoaderIcon className="size-4 animate-spin text-muted-foreground shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium truncate">
+                                    {p.name}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Generating persona...
+                                  </p>
+                                </div>
+                              </div>
+                            </SidebarMenuItem>
+                          ))}
+                        </SidebarMenu>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <div
+                    className="flex flex-wrap gap-1.5 px-3 py-1.5 cursor-pointer"
+                    onClick={() => setPersonasExpanded(true)}
+                  >
+                    {activePersonas.length > 0 ? (
+                      activePersonas.map((p) => (
+                        <span
+                          key={p.id}
+                          className="text-sm"
+                          title={p.name}
                         >
-                          <TrashIcon className="size-3" />
-                        </Button>
-                      </button>
-                    </SidebarMenuItem>
-                  ))
+                          {p.emoji}
+                        </span>
+                      ))
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No active personas</p>
+                    )}
+                    {activePersonas.length > 0 && (
+                      <span className="text-xs text-muted-foreground self-center ml-0.5">
+                        {activePersonas.length} active
+                      </span>
+                    )}
+                  </div>
                 )}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+              </SidebarGroupContent>
+            </SidebarGroup>
 
-          <SidebarSeparator />
+            <SidebarSeparator />
+          </div>
 
-          {/* Personas section */}
-          <SidebarGroup>
-            <SidebarGroupLabel>Personas</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {defaultPersonas.map((persona) => (
-                  <PersonaRow
-                    key={persona.id}
-                    persona={persona}
-                    onToggle={onToggle}
-                  />
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-
-          {(customPersonas.length > 0 || pending.length > 0) && (
-            <>
-              <SidebarSeparator />
-              <SidebarGroup>
-                <SidebarGroupLabel>Custom</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {customPersonas.map((persona) => (
-                      <PersonaRow
-                        key={persona.id}
-                        persona={persona}
-                        onToggle={onToggle}
-                        onRemove={() => setConfirmDeletePersonaId(persona.id)}
-                        onEdit={() => openEdit(persona)}
-                      />
-                    ))}
-                    {pending.map((p) => (
-                      <SidebarMenuItem key={p.id}>
-                        <div className="flex items-center gap-2 px-2 py-1.5">
-                          <LoaderIcon className="size-4 animate-spin text-muted-foreground shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium truncate">
-                              {p.name}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Generating persona...
-                            </p>
+          {/* Conversations section — scrollable */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <SidebarGroup>
+              <SidebarGroupLabel className="flex items-center justify-between">
+                <span>Conversations</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 px-1.5 text-xs"
+                  onClick={onNewChat}
+                >
+                  <PlusIcon className="size-3 mr-0.5" />
+                  New
+                </Button>
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {conversations.length === 0 ? (
+                    <SidebarMenuItem>
+                      <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                        No conversations yet
+                      </p>
+                    </SidebarMenuItem>
+                  ) : (
+                    conversations.map((conv) => (
+                      <SidebarMenuItem key={conv.id}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => onSelectConversation(conv.id)}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelectConversation(conv.id) }}
+                          className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-left group transition-colors cursor-pointer ${
+                            conv.id === activeConversationId
+                              ? "bg-secondary"
+                              : "hover:bg-secondary/50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                            <div className="min-w-0">
+                              <p className="text-sm truncate">{conv.title}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {timeAgo(conv.createdAt)}
+                              </p>
+                            </div>
                           </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setConfirmDeleteId(conv.id)
+                            }}
+                          >
+                            <TrashIcon className="size-3" />
+                          </Button>
                         </div>
                       </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            </>
-          )}
+                    ))
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </div>
         </SidebarContent>
 
-        <SidebarSeparator />
-        <SidebarFooter className="p-3">
-          <Button
-            variant="secondary"
-            size="sm"
-            className="w-full"
-            onClick={openCreate}
-          >
-            <PlusIcon className="size-4 mr-1" />
-            Create persona
-          </Button>
-        </SidebarFooter>
       </Sidebar>
 
       {confirmDeletePersonaId && (

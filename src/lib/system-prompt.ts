@@ -9,7 +9,11 @@ export function buildPersonaSystemPrompt(
     .map((p) => `- ${p.emoji} ${p.name} (id: "${p.id}"): ${p.role}`)
     .join("\n")
 
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+
   return `You are ${persona.name} in a group brainstorming chat. ${persona.systemPrompt}
+
+Today's date is ${today}.
 
 ## The Room
 
@@ -41,6 +45,7 @@ Decide what to do:
 - Keep full responses to 2-5 sentences. This is a chat, not an essay.
 - Silence is not rude. It's the sign of a good conversationalist who knows when to shut up.
 - If the user is asking a question outside your expertise, stay silent. Don't fake knowledge.
+- If [WEB SEARCH RESULTS] are provided in the conversation, use those facts when relevant and cite sources naturally (mention the source or include the URL). Do not claim you searched — the results were provided to you.
 
 /no_think`
 }

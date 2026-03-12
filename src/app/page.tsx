@@ -39,6 +39,17 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("fray-model", model)
   }, [model])
+
+  // Web search toggle — restore from localStorage
+  const [webSearchEnabled, setWebSearchEnabled] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("fray-web-search") === "true"
+    }
+    return false
+  })
+  useEffect(() => {
+    localStorage.setItem("fray-web-search", String(webSearchEnabled))
+  }, [webSearchEnabled])
   const [pinnedModelIds, setPinnedModelIds] = useState<string[]>([])
   const [cloudModels, setCloudModels] = useState<ModelInfo[]>([])
   const [hasApiKey, setHasApiKey] = useState(false)
@@ -80,13 +91,14 @@ export default function Home() {
     [setActivePersonaIds]
   )
 
-  const { messages, pendingPersonas, isLoading, messagesLoading, sendMessage, clearChat } =
+  const { messages, pendingPersonas, pendingConversationId, isLoading, isSearching, messagesLoading, sendMessage, clearChat } =
     useChatSession(
       activePersonas,
       model,
       conversationId,
       handleConversationCreated,
-      handleConversationLoaded
+      handleConversationLoaded,
+      webSearchEnabled
     )
 
   // Update conversation title in sidebar when first message is sent
@@ -187,6 +199,7 @@ export default function Home() {
   const pinnedModels = pinnedModelIds
     .map((id) => modelMap.get(id))
     .filter((m): m is ModelInfo => m !== undefined)
+
 
   // If current local model isn't available, fall back to first pinned.
   // Cloud models load async so never auto-switch away from them.
@@ -294,14 +307,6 @@ export default function Home() {
             <h1 className="text-sm font-medium">Fray</h1>
           </div>
           <div className="flex items-center gap-3">
-            {(messages.length > 0 || conversationId) && (
-              <button
-                onClick={handleNewChat}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                New chat
-              </button>
-            )}
             <button
               onClick={async () => {
                 await signOut()
@@ -316,7 +321,7 @@ export default function Home() {
         </header>
         <ChatArea
           messages={messages}
-          pendingPersonas={pendingPersonas}
+          pendingPersonas={pendingConversationId === conversationId ? pendingPersonas : new Set()}
           isLoading={isLoading}
           messagesLoading={messagesLoading}
           personas={personas}
@@ -325,6 +330,9 @@ export default function Home() {
           pinnedModels={pinnedModels}
           onSend={sendMessage}
           onOpenModelBrowser={() => setModelBrowserOpen(true)}
+          webSearchEnabled={webSearchEnabled}
+          onWebSearchToggle={() => setWebSearchEnabled((v) => !v)}
+          isSearching={pendingConversationId === conversationId && isSearching}
         />
       </SidebarInset>
 

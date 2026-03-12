@@ -16,7 +16,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const user = await getDbUser()
-  const { name, emoji, color, role, systemPrompt } = await req.json()
+  const { name, emoji, color, role, systemPrompt, canSearch } = await req.json()
 
   const persona = await prisma.persona.create({
     data: {
@@ -27,6 +27,7 @@ export async function POST(req: Request) {
       role: role || "Custom",
       systemPrompt: systemPrompt || name,
       isDefault: false,
+      canSearch: canSearch || false,
     },
   })
 
