@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Fray
 
-## Getting Started
+Multi-persona group chat where AI personas with distinct personalities debate, brainstorm, and build on each other's ideas. Bring your own API key via OpenRouter, or run local models with Ollama.
 
-First, run the development server:
+## Stack
+
+- **Frontend:** Next.js 16, React 19, Tailwind CSS v4, shadcn/ui
+- **Database:** Postgres with Prisma ORM
+- **Auth:** AWS Cognito
+- **LLM:** BYOK via OpenRouter + local models via Ollama
+- **Web search:** Self-hosted SearXNG
+- **Containers:** Podman + podman-compose
+
+## Local Development
 
 ```bash
+cp .env.example .env
+# Fill in ENCRYPTION_KEY and Cognito values
+
+# Start Postgres and SearXNG
+podman-compose -p fray up db searxng -d
+
+# Run migrations and seed
+npx prisma migrate dev
+npx prisma db seed
+
+# Start dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+App runs at http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Production Deployment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Fray runs on a single EC2 instance (Fedora) with Caddy for auto-SSL.
 
-## Learn More
+### First-time setup
 
-To learn more about Next.js, take a look at the following resources:
+1. Launch a Fedora EC2 instance with ports 22, 80, 443 open
+2. Point your domain's A record at the instance IP
+3. SSH in and run `setup.sh`, then fill in `.env`
+4. Build and start:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+podman-compose -f podman-compose.prod.yml build
+podman-compose -f podman-compose.prod.yml run --rm app npx prisma migrate deploy
+podman-compose -f podman-compose.prod.yml run --rm app npx prisma db seed
+podman-compose -f podman-compose.prod.yml up -d
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Deploying updates
 
-## Deploy on Vercel
+```bash
+./deploy.sh -i ~/.ssh/fray.pem fedora@your-ec2-ip
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Pulls latest code, rebuilds containers, runs migrations, and restarts.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Environment Variables
+
+See `.env.example` for the full list. Key variables:
+
+| Variable | Purpose |
+|---|---|
+| `ENCRYPTION_KEY` | AES-256-GCM key for stored API keys |
+| `NEXT_PUBLIC_COGNITO_USER_POOL_ID` | Cognito user pool |
+| `NEXT_PUBLIC_COGNITO_CLIENT_ID` | Cognito app client |
+| `DOMAIN` | Production domain for Caddy auto-SSL |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` | Production DB credentials |
