@@ -178,6 +178,16 @@ export function useChatSession(
               setIsSearching(false)
               break
 
+            case "persona-start": {
+              const d = data as { personaId: string }
+              setPendingPersonas((prev) => {
+                const next = new Set(prev)
+                next.add(d.personaId)
+                return next
+              })
+              break
+            }
+
             case "persona-response": {
               const d = data as {
                 personaId: string

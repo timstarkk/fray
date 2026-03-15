@@ -14,6 +14,8 @@ type TurnResponse = {
   personaId: string
   response_type: "full" | "brief" | "emoji" | "silence"
   content: string
+  addressed_to?: "user" | "persona"
+  addressed_persona_id?: string
 }
 
 export function shuffle<T>(arr: T[]): T[] {

@@ -148,7 +148,7 @@ export async function POST(req: Request) {
         }
 
         // Turn loop
-        const turnResponses: { personaId: string; response_type: "full" | "brief" | "emoji" | "silence"; content: string }[] = []
+        const turnResponses: { personaId: string; response_type: "full" | "brief" | "emoji" | "silence"; content: string; addressed_to?: "user" | "persona"; addressed_persona_id?: string }[] = []
         let sharedSearchResults: string | null = null
 
         for (let i = 0; i < shuffledPersonas.length; i++) {
@@ -228,9 +228,9 @@ RULES:
               maxOutputTokens: 4096,
             })
             parsed = result.output ?? { response_type: "silence", content: "" }
-          } catch {
+          } catch (structuredErr) {
             // Model can't do structured output — fall back to raw text
-            console.warn(`[turn] ${persona.name} structured output failed, falling back to raw text`)
+            console.warn(`[turn] ${persona.name} structured output failed:`, structuredErr)
             try {
               const fallback = await generateText({
                 model: resolvedModel,
@@ -239,8 +239,8 @@ RULES:
                 maxOutputTokens: 4096,
               })
               parsed = { response_type: "full", content: fallback.text || "" }
-            } catch {
-              console.error(`[turn] ${persona.name} raw fallback also failed`)
+            } catch (fallbackErr) {
+              console.error(`[turn] ${persona.name} raw fallback also failed:`, fallbackErr)
               parsed = { response_type: "silence", content: "" }
             }
           }
@@ -264,6 +264,8 @@ RULES:
               personaId: persona.id,
               response_type: parsed.response_type,
               content: parsed.content,
+              addressed_to: parsed.addressed_to as "user" | "persona" | undefined,
+              addressed_persona_id: parsed.addressed_persona_id,
             })
           }
 
@@ -277,6 +279,91 @@ RULES:
               addressed_persona_id: parsed.addressed_persona_id,
             },
           })
+        }
+
+        // Follow-up round: give addressed personas a chance to respond
+        const addressedPersonaIds = [
+          ...new Set(
+            turnResponses
+              .filter((r) => r.addressed_to === "persona" && r.addressed_persona_id)
+              .map((r) => r.addressed_persona_id!)
+          ),
+        ]
+        const followupPersonas = addressedPersonaIds
+          .map((id) => personas.find((p) => p.id === id))
+          .filter((p): p is Persona => p !== undefined)
+
+        if (followupPersonas.length > 0) {
+          console.log(`[turn] follow-up round: ${followupPersonas.length} persona(s) addressed`)
+
+          for (const persona of followupPersonas) {
+            const turnSummary = buildTurnSummary(turnResponses, personas)
+            const apiMessages = buildApiMessages(
+              dbMessages, turnResponses, persona.id, personas, turnSummary, sharedSearchResults
+            )
+
+            emit("persona-start", { personaId: persona.id })
+
+            let parsed: { response_type: "full" | "brief" | "emoji" | "silence"; content: string; addressed_to?: string; addressed_persona_id?: string }
+
+            try {
+              const result = await generateText({
+                model: resolvedModel,
+                system: buildPersonaSystemPrompt(persona, personas),
+                messages: apiMessages,
+                output: Output.object({ schema: personaResponseSchema }),
+                maxOutputTokens: 4096,
+              })
+              parsed = result.output ?? { response_type: "silence", content: "" }
+            } catch {
+              console.warn(`[turn] follow-up ${persona.name} structured output failed, falling back to raw text`)
+              try {
+                const fallback = await generateText({
+                  model: resolvedModel,
+                  system: buildPersonaSystemPrompt(persona, personas),
+                  messages: apiMessages,
+                  maxOutputTokens: 4096,
+                })
+                parsed = { response_type: "full", content: fallback.text || "" }
+              } catch {
+                console.error(`[turn] follow-up ${persona.name} raw fallback also failed`)
+                parsed = { response_type: "silence", content: "" }
+              }
+            }
+
+            console.log(`[turn] follow-up ${persona.name} responded: type=${parsed.response_type} content=${parsed.content?.substring(0, 50)}`)
+
+            if (parsed.response_type !== "silence" && parsed.content) {
+              await prisma.message.create({
+                data: {
+                  conversationId: convId,
+                  personaId: persona.id,
+                  content: parsed.content,
+                  responseType: parsed.response_type,
+                  addressedTo: parsed.addressed_to || null,
+                  addressedPersonaId: parsed.addressed_persona_id || null,
+                },
+              })
+
+              turnResponses.push({
+                personaId: persona.id,
+                response_type: parsed.response_type,
+                content: parsed.content,
+                addressed_to: parsed.addressed_to as "user" | "persona" | undefined,
+                addressed_persona_id: parsed.addressed_persona_id,
+              })
+            }
+
+            emit("persona-response", {
+              personaId: persona.id,
+              response: {
+                response_type: parsed.response_type,
+                content: parsed.content,
+                addressed_to: parsed.addressed_to,
+                addressed_persona_id: parsed.addressed_persona_id,
+              },
+            })
+          }
         }
 
         // No responses at all — likely model incompatibility
