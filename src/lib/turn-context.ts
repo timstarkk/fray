@@ -74,6 +74,10 @@ export function buildApiMessages(
     })
     .map((m) => {
       if (m.personaId === null) {
+        // Summary message — inject as labeled context
+        if (m.responseType === "summary") {
+          return { role: "user" as const, content: `[CONVERSATION SUMMARY — earlier messages condensed:\n${m.content}]` }
+        }
         // User message
         return { role: "user" as const, content: m.content }
       }

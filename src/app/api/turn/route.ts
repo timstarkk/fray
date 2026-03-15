@@ -7,6 +7,8 @@ import { prisma } from "@/lib/db"
 import { decrypt } from "@/lib/encryption"
 import { webSearch, directSearch } from "@/lib/tools/web-search"
 import { shuffle, buildTurnSummary, buildApiMessages } from "@/lib/turn-context"
+import { getContextLength } from "@/lib/model-context"
+import { compactIfNeeded } from "@/lib/compaction"
 import { type Persona } from "@/lib/personas"
 
 export const maxDuration = 120
@@ -131,10 +133,19 @@ export async function POST(req: Request) {
         })
 
         // Load full message history from DB (includes the user message we just wrote)
-        const dbMessages = await prisma.message.findMany({
+        const allDbMessages = await prisma.message.findMany({
           where: { conversationId: convId },
           orderBy: { createdAt: "asc" },
         })
+
+        // Context compaction — summarize older messages if approaching context limit
+        const contextLength = await getContextLength(model || "local/qwen3:32b")
+        const { messages: dbMessages, compacted } = await compactIfNeeded(
+          allDbMessages, contextLength, resolvedModel, convId, personas
+        )
+        if (compacted) {
+          console.log(`[turn] context compacted for conversation ${convId}`)
+        }
 
         // Turn loop
         const turnResponses: { personaId: string; response_type: "full" | "brief" | "emoji" | "silence"; content: string }[] = []
