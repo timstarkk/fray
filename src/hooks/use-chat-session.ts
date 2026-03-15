@@ -2,113 +2,11 @@
 
 import { useState, useCallback, useRef, useEffect } from "react"
 import { type Persona } from "@/lib/personas"
-import { type PersonaResponse } from "@/lib/schema"
 import { type ChatMessage } from "@/lib/chat-types"
+import { readSSE } from "@/lib/sse-reader"
 
 function uuid() {
   return crypto.randomUUID()
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr]
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[a[i], a[j]] = [a[j], a[i]]
-  }
-  return a
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function generateTitle(text: string): string {
-  if (text.length <= 50) return text
-  const truncated = text.substring(0, 47)
-  const lastSpace = truncated.lastIndexOf(" ")
-  return (lastSpace > 20 ? truncated.substring(0, lastSpace) : truncated) + "..."
-}
-
-function buildTurnSummary(
-  turnResponses: ChatMessage[],
-  personas: Persona[]
-): string | null {
-  if (turnResponses.length === 0) return null
-
-  const personaMap = new Map(personas.map((p) => [p.id, p]))
-  const fullCount = turnResponses.filter(
-    (m) => m.role === "persona" && m.response.response_type === "full"
-  ).length
-  const briefCount = turnResponses.filter(
-    (m) => m.role === "persona" && m.response.response_type === "brief"
-  ).length
-  const emojiCount = turnResponses.filter(
-    (m) => m.role === "persona" && m.response.response_type === "emoji"
-  ).length
-
-  const names = turnResponses
-    .filter((m) => m.role === "persona")
-    .map((m) => {
-      const p = personaMap.get((m as { personaId: string }).personaId)
-      return p ? p.name : "someone"
-    })
-
-  const parts: string[] = []
-  parts.push(
-    `[TURN STATUS: ${names.join(", ")} already responded this round.`
-  )
-  if (fullCount > 0) parts.push(`${fullCount} full response(s) given.`)
-  if (briefCount > 0) parts.push(`${briefCount} brief acknowledgment(s).`)
-  if (emojiCount > 0) parts.push(`${emojiCount} emoji reaction(s).`)
-  parts.push(
-    "If they already covered your point or asked your question, use emoji/brief/silence. Do NOT repeat what's been said.]"
-  )
-
-  return parts.join(" ")
-}
-
-function buildApiMessages(
-  messages: ChatMessage[],
-  currentPersonaId: string,
-  personas: Persona[],
-  turnSummary: string | null
-) {
-  const personaMap = new Map(personas.map((p) => [p.id, p]))
-
-  const mapped = messages
-    .filter((m) => {
-      if (m.role === "system") return false
-      if (m.role === "persona" && m.response.response_type === "silence")
-        return false
-      return true
-    })
-    .map((m) => {
-      if (m.role === "user") {
-        return { role: "user" as const, content: m.content }
-      }
-      if (m.role !== "persona") {
-        return { role: "user" as const, content: "" }
-      }
-
-      const persona = personaMap.get(m.personaId)
-      const label = persona
-        ? `${persona.emoji} ${persona.name}`
-        : m.personaId
-
-      const content = `[${label}]: ${m.response.content}`
-
-      if (m.personaId === currentPersonaId) {
-        return { role: "assistant" as const, content: m.response.content }
-      }
-
-      return { role: "user" as const, content }
-    })
-
-  if (turnSummary) {
-    mapped.push({ role: "user" as const, content: turnSummary })
-  }
-
-  return mapped
 }
 
 type DbMessage = {
@@ -208,7 +106,6 @@ export function useChatSession(
           if (data.messages) {
             setMessages(data.messages.map(dbMessageToChatMessage))
           }
-          // Notify parent about loaded conversation metadata
           if (onConversationLoadedRef.current && data.personas) {
             onConversationLoadedRef.current(
               data.personas.map(
@@ -231,156 +128,127 @@ export function useChatSession(
       const personas = activePersonasRef.current
       if (personas.length === 0) return
 
-      let convId = conversationIdRef.current
-
-      // Create conversation if none exists
-      if (!convId) {
-        try {
-          const res = await fetch("/api/conversations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              title: generateTitle(text),
-              model: modelRef.current,
-              personaIds: personas.map((p) => p.id),
-            }),
-          })
-          const conv = await res.json()
-          const newId: string = conv.id
-          convId = newId
-          conversationIdRef.current = newId
-          justCreatedRef.current = true
-          onConversationCreatedRef.current(newId)
-        } catch (err) {
-          console.error("Failed to create conversation:", err)
-          return
-        }
-      }
-
+      // Optimistic user message
       const userMsg: ChatMessage = {
         id: uuid(),
         role: "user",
         content: text,
         timestamp: new Date(),
       }
-
       setMessages((prev) => [...prev, userMsg])
       setIsLoading(true)
-      setPendingConvId(convId)
 
-      const shuffled = shuffle([...personas])
-      const delays = shuffled
-        .map(() => 500 + Math.random() * 2500)
-        .sort((a, b) => a - b)
-
-      setPendingPersonas(new Set(shuffled.map((p) => p.id)))
-
-      const turnResponses: ChatMessage[] = []
-      let sharedSearchResults: string | null = null
-
-      for (let i = 0; i < shuffled.length; i++) {
-        const persona = shuffled[i]
-        const delay = i === 0 ? delays[i] : delays[i] - delays[i - 1]
-
-        await sleep(Math.max(delay, 200))
-
-        const allMessages = await new Promise<ChatMessage[]>((resolve) => {
-          setMessages((prev) => {
-            resolve([...prev])
-            return prev
-          })
+      try {
+        const res = await fetch("/api/turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userMessage: text,
+            conversationId: conversationIdRef.current,
+            personaIds: personas.map((p) => p.id),
+            model: modelRef.current,
+            webSearchEnabled: webSearchEnabledRef.current,
+          }),
         })
 
-        const historyBeforeTurn = allMessages.filter(
-          (m) => !turnResponses.some((tr) => tr.id === m.id)
-        )
-        const fullContext = [...historyBeforeTurn, ...turnResponses]
-
-        const turnSummary = buildTurnSummary(turnResponses, personas)
-        const apiMessages = buildApiMessages(
-          fullContext,
-          persona.id,
-          personas,
-          turnSummary
-        )
-
-        // Inject shared search results from a previous persona's search
-        if (sharedSearchResults) {
-          apiMessages.push({
-            role: "user" as const,
-            content: sharedSearchResults,
-          })
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || `API ${res.status}`)
         }
 
-        // Show "Searching..." indicator for the first persona when web search is enabled
-        const willSearch = !sharedSearchResults && webSearchEnabledRef.current && i === 0
-        if (willSearch) setIsSearching(true)
-
-        try {
-          const res = await fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              messages: apiMessages,
-              persona,
-              allPersonas: personas,
-              model: modelRef.current,
-              conversationId: convId,
-              userMessage: i === 0 ? text : undefined,
-              webSearchEnabled: !sharedSearchResults && webSearchEnabledRef.current,
-            }),
-          })
-
-          if (willSearch) setIsSearching(false)
-
-          if (!res.ok) throw new Error(`API ${res.status}`)
-          const data = await res.json()
-          const { searchResults, ...response } = data as PersonaResponse & {
-            searchResults?: string[]
-          }
-
-          // Capture search results to share with subsequent personas
-          if (searchResults && searchResults.length > 0 && !sharedSearchResults) {
-            sharedSearchResults = `[WEB SEARCH RESULTS (from ${persona.name}'s search — use these facts if relevant, do not search again):\n${searchResults.join("\n")}]`
-          }
-
-          if (response.response_type !== "silence" && response.content) {
-            const personaMsg: ChatMessage = {
-              id: uuid(),
-              role: "persona",
-              personaId: persona.id,
-              response,
-              timestamp: new Date(),
+        await readSSE(res, (event, data) => {
+          switch (event) {
+            case "turn-start": {
+              const d = data as { conversationId: string; personaOrder: string[] }
+              if (!conversationIdRef.current) {
+                conversationIdRef.current = d.conversationId
+                justCreatedRef.current = true
+                onConversationCreatedRef.current(d.conversationId)
+              }
+              setPendingPersonas(new Set(d.personaOrder))
+              setPendingConvId(d.conversationId)
+              break
             }
-            turnResponses.push(personaMsg)
-            setMessages((prev) => [...prev, personaMsg])
+
+            case "search-start":
+              setIsSearching(true)
+              break
+
+            case "search-complete":
+              setIsSearching(false)
+              break
+
+            case "persona-response": {
+              const d = data as {
+                personaId: string
+                response: {
+                  response_type: "full" | "brief" | "emoji" | "silence"
+                  content: string
+                  addressed_to?: string
+                  addressed_persona_id?: string
+                }
+              }
+              if (d.response.response_type !== "silence" && d.response.content) {
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: uuid(),
+                    role: "persona" as const,
+                    personaId: d.personaId,
+                    response: {
+                      response_type: d.response.response_type,
+                      content: d.response.content,
+                      addressed_to: d.response.addressed_to as "user" | "persona" | undefined,
+                      addressed_persona_id: d.response.addressed_persona_id,
+                    },
+                    timestamp: new Date(),
+                  },
+                ])
+              }
+              setPendingPersonas((prev) => {
+                const next = new Set(prev)
+                next.delete(d.personaId)
+                return next
+              })
+              break
+            }
+
+            case "turn-error": {
+              const d = data as { message: string }
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: uuid(),
+                  role: "system" as const,
+                  content: d.message,
+                  timestamp: new Date(),
+                },
+              ])
+              break
+            }
+
+            case "turn-complete":
+              break
           }
-        } catch (err) {
-          if (willSearch) setIsSearching(false)
-          console.error(`Error calling persona ${persona.name}:`, err)
-        }
-
-        setPendingPersonas((prev) => {
-          const next = new Set(prev)
-          next.delete(persona.id)
-          return next
         })
-      }
-
-      if (turnResponses.length === 0) {
+      } catch (err) {
+        console.error("Turn failed:", err)
         setMessages((prev) => [
           ...prev,
           {
             id: uuid(),
             role: "system" as const,
-            content: "No personas could respond. The selected model may not be compatible — try switching to a different model.",
+            content:
+              "Something went wrong. Try again or switch models.",
             timestamp: new Date(),
           },
         ])
+      } finally {
+        setPendingConvId(null)
+        setIsLoading(false)
+        setIsSearching(false)
+        setPendingPersonas(new Set())
       }
-
-      setPendingConvId(null)
-      setIsLoading(false)
     },
     [] // all dependencies accessed via refs
   )
