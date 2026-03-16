@@ -5,8 +5,8 @@ type UserMessageProps = {
 export function UserMessage({ content }: UserMessageProps) {
   return (
     <div className="flex justify-end">
-      <div className="bg-primary text-primary-foreground rounded-2xl rounded-br-sm px-4 py-2 max-w-[80%]">
-        <p className="text-sm">{content}</p>
+      <div className="bg-indigo-600/80 text-white rounded-2xl rounded-br-md px-4 py-2.5 max-w-[75%]">
+        <p className="text-[15px] leading-relaxed">{content}</p>
       </div>
     </div>
   )

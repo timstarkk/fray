@@ -15,12 +15,12 @@ import { Button } from "@/components/ui/button"
 import { ArrowUpIcon, ChevronDownIcon, MonitorIcon, CloudIcon, SettingsIcon, GlobeIcon } from "lucide-react"
 import { type ChatMessage } from "@/lib/chat-types"
 import { type Persona } from "@/lib/personas"
+import { getPersonaColors } from "@/lib/colors"
 import type { ModelInfo } from "@/app/api/models/route"
 import {
   UserMessage,
   PersonaFullMessage,
   PersonaBriefMessage,
-  PersonaEmojiReaction,
   PersonaThinking,
 } from "@/components/messages"
 
@@ -141,7 +141,7 @@ export function ChatArea({
   return (
     <div className="flex flex-1 flex-col">
       <ChatContainerRoot className="flex-1 p-4">
-        <ChatContainerContent className="gap-4 max-w-3xl mx-auto w-full">
+        <ChatContainerContent className="gap-6 max-w-5xl mx-auto w-full">
           {turns.length === 0 && !messagesLoading ? (
             <div className="flex-1 flex items-center justify-center">
               <p className="text-muted-foreground text-sm">
@@ -149,15 +149,27 @@ export function ChatArea({
               </p>
             </div>
           ) : turns.length === 0 ? null : (
-            turns.map((turn) => (
+            turns.map((turn) => {
+              // Build emoji reactions list to attach to the last full message
+              const emojiReactions = turn.responses.emoji
+                .map((msg) => {
+                  const p = personaMap.get(msg.personaId)
+                  if (!p) return null
+                  return { persona: p, content: msg.response.content }
+                })
+                .filter((r): r is { persona: Persona; content: string } => r !== null)
+
+              const lastFullIdx = turn.responses.full.length - 1
+
+              return (
               <div key={turn.userMessage.id} className="flex flex-col gap-3">
                 <UserMessage content={turn.userMessage.content} />
 
                 {(turn.responses.full.length > 0 ||
                   turn.responses.brief.length > 0 ||
                   turn.responses.emoji.length > 0) && (
-                  <div className="flex flex-col gap-2 mt-1">
-                    {turn.responses.full.map((msg) => {
+                  <div className="flex flex-col gap-2.5">
+                    {turn.responses.full.map((msg, idx) => {
                       const persona = personaMap.get(msg.personaId)
                       if (!persona) return null
                       return (
@@ -166,12 +178,31 @@ export function ChatArea({
                           persona={persona}
                           response={msg.response}
                           addressedPersona={getAddressedPersona(msg)}
+                          reactions={idx === lastFullIdx ? emojiReactions : undefined}
                         />
                       )
                     })}
 
+                    {/* If there are emoji reactions but no full messages, show them standalone */}
+                    {turn.responses.full.length === 0 && emojiReactions.length > 0 && (
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        {emojiReactions.map((r, i) => {
+                          const rColors = getPersonaColors(r.persona.color)
+                          return (
+                            <span
+                              key={i}
+                              className={`inline-flex items-center rounded-full px-2.5 py-1 ${rColors.badge} cursor-default`}
+                              title={`${r.persona.emoji} ${r.persona.name}`}
+                            >
+                              <span className="text-sm leading-none">{r.content}</span>
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+
                     {turn.responses.brief.length > 0 && (
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-col gap-2">
                         {turn.responses.brief.map((msg) => {
                           const persona = personaMap.get(msg.personaId)
                           if (!persona) return null
@@ -186,22 +217,6 @@ export function ChatArea({
                         })}
                       </div>
                     )}
-
-                    {turn.responses.emoji.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pl-2">
-                        {turn.responses.emoji.map((msg) => {
-                          const persona = personaMap.get(msg.personaId)
-                          if (!persona) return null
-                          return (
-                            <PersonaEmojiReaction
-                              key={msg.id}
-                              persona={persona}
-                              content={msg.response.content}
-                            />
-                          )
-                        })}
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -211,7 +226,8 @@ export function ChatArea({
                   </div>
                 )}
               </div>
-            ))
+              )
+            })
           )}
 
           {pendingPersonas.size > 0 && (
@@ -235,7 +251,7 @@ export function ChatArea({
       </ChatContainerRoot>
 
       <div className="border-t p-4">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-5xl mx-auto">
           <PromptInput
             value={input}
             onValueChange={setInput}

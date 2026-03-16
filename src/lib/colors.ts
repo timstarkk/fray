@@ -1,46 +1,46 @@
 export type PersonaColorSet = {
-  bg: string
-  border: string
+  bubble: string
   name: string
+  accent: string
   badge: string
 }
 
 const colorMap: Record<string, PersonaColorSet> = {
   red: {
-    bg: "bg-red-950/20",
-    border: "border-l-red-500",
+    bubble: "bg-white/[0.04]",
     name: "text-red-400",
-    badge: "bg-red-900/40",
+    accent: "text-red-400/60",
+    badge: "bg-white/[0.06]",
   },
   blue: {
-    bg: "bg-blue-950/20",
-    border: "border-l-blue-500",
+    bubble: "bg-white/[0.04]",
     name: "text-blue-400",
-    badge: "bg-blue-900/40",
+    accent: "text-blue-400/60",
+    badge: "bg-white/[0.06]",
   },
   emerald: {
-    bg: "bg-emerald-950/20",
-    border: "border-l-emerald-500",
+    bubble: "bg-white/[0.04]",
     name: "text-emerald-400",
-    badge: "bg-emerald-900/40",
+    accent: "text-emerald-400/60",
+    badge: "bg-white/[0.06]",
   },
   purple: {
-    bg: "bg-purple-950/20",
-    border: "border-l-purple-500",
+    bubble: "bg-white/[0.04]",
     name: "text-purple-400",
-    badge: "bg-purple-900/40",
+    accent: "text-purple-400/60",
+    badge: "bg-white/[0.06]",
   },
   amber: {
-    bg: "bg-amber-950/20",
-    border: "border-l-amber-500",
+    bubble: "bg-white/[0.04]",
     name: "text-amber-400",
-    badge: "bg-amber-900/40",
+    accent: "text-amber-400/60",
+    badge: "bg-white/[0.06]",
   },
   slate: {
-    bg: "bg-slate-950/20",
-    border: "border-l-slate-500",
+    bubble: "bg-white/[0.04]",
     name: "text-slate-400",
-    badge: "bg-slate-900/40",
+    accent: "text-slate-400/60",
+    badge: "bg-white/[0.06]",
   },
 }
 
