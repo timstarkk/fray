@@ -252,12 +252,7 @@ export default function Home() {
   const handleNewChat = useCallback(() => {
     setConversationId(null)
     clearChat()
-    // Reset to default persona selection (first 3)
-    if (personasLoaded && personas.length > 0) {
-      const defaultIds = personas.slice(0, 3).map((p) => p.id)
-      setActivePersonaIds(defaultIds)
-    }
-  }, [clearChat, personasLoaded, personas, setActivePersonaIds])
+  }, [clearChat])
 
   const handleSelectConversation = useCallback(
     (id: string) => {

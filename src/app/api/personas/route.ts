@@ -11,6 +11,17 @@ export async function GET() {
     orderBy: { createdAt: "asc" },
   })
 
+  // Sort defaults to desired order, user-created personas come after
+  const defaultOrder = ["pragmatist", "optimist", "devils-advocate", "researcher", "editor"]
+  personas.sort((a, b) => {
+    const aIdx = defaultOrder.indexOf(a.id)
+    const bIdx = defaultOrder.indexOf(b.id)
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+    if (aIdx !== -1) return -1
+    if (bIdx !== -1) return 1
+    return 0
+  })
+
   return Response.json(personas)
 }
 
