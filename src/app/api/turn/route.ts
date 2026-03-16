@@ -9,6 +9,7 @@ import { webSearch, directSearch } from "@/lib/tools/web-search"
 import { shuffle, buildTurnSummary, buildApiMessages } from "@/lib/turn-context"
 import { getContextLength } from "@/lib/model-context"
 import { compactIfNeeded } from "@/lib/compaction"
+import { fetchAllUrls } from "@/lib/tools/url-fetch"
 import { type Persona } from "@/lib/personas"
 
 export const maxDuration = 120
@@ -132,6 +133,16 @@ export async function POST(req: Request) {
           },
         })
 
+        // Fetch any URLs in the user message
+        const fetchedPages = await fetchAllUrls(userMessage)
+        let fetchedUrlContent: string | null = null
+        if (fetchedPages.length > 0) {
+          fetchedUrlContent = fetchedPages
+            .map((p) => `[PAGE CONTENT from ${p.url}:\n${p.content}]`)
+            .join("\n\n")
+          console.log(`[turn] fetched ${fetchedPages.length} URL(s) from user message`)
+        }
+
         // Load full message history from DB (includes the user message we just wrote)
         const allDbMessages = await prisma.message.findMany({
           where: { conversationId: convId },
@@ -210,7 +221,7 @@ RULES:
           // Build context for this persona
           const turnSummary = buildTurnSummary(turnResponses, personas)
           const apiMessages = buildApiMessages(
-            dbMessages, turnResponses, persona.id, personas, turnSummary, sharedSearchResults
+            dbMessages, turnResponses, persona.id, personas, turnSummary, sharedSearchResults, fetchedUrlContent
           )
 
           // Emit persona-start
@@ -299,7 +310,7 @@ RULES:
           for (const persona of followupPersonas) {
             const turnSummary = buildTurnSummary(turnResponses, personas)
             const apiMessages = buildApiMessages(
-              dbMessages, turnResponses, persona.id, personas, turnSummary, sharedSearchResults
+              dbMessages, turnResponses, persona.id, personas, turnSummary, sharedSearchResults, fetchedUrlContent
             )
 
             emit("persona-start", { personaId: persona.id })

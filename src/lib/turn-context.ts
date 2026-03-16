@@ -63,7 +63,8 @@ export function buildApiMessages(
   currentPersonaId: string,
   personas: Persona[],
   turnSummary: string | null,
-  sharedSearchResults: string | null
+  sharedSearchResults: string | null,
+  fetchedUrlContent: string | null = null
 ) {
   const personaMap = new Map(personas.map((p) => [p.id, p]))
 
@@ -118,6 +119,10 @@ export function buildApiMessages(
 
   if (sharedSearchResults) {
     mapped.push({ role: "user" as const, content: sharedSearchResults })
+  }
+
+  if (fetchedUrlContent) {
+    mapped.push({ role: "user" as const, content: fetchedUrlContent })
   }
 
   return mapped
