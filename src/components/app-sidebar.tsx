@@ -64,19 +64,30 @@ type ModalState =
   | { mode: "create" }
   | { mode: "edit"; persona: Persona }
 
-function timeAgo(dateStr: string): string {
-  const now = Date.now()
-  const then = new Date(dateStr).getTime()
-  const seconds = Math.floor((now - then) / 1000)
+function getDateGroup(dateStr: string): string {
+  const now = new Date()
+  const then = new Date(dateStr)
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today.getTime() - 86400000)
 
-  if (seconds < 60) return "just now"
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d ago`
-  return new Date(dateStr).toLocaleDateString()
+  if (then >= today) return "Today"
+  if (then >= yesterday) return "Yesterday"
+  return "Earlier"
+}
+
+function groupConversationsByDate(conversations: ConversationSummary[]): { label: string; items: ConversationSummary[] }[] {
+  const groups: Map<string, ConversationSummary[]> = new Map()
+  const order = ["Today", "Yesterday", "Earlier"]
+
+  for (const conv of conversations) {
+    const label = getDateGroup(conv.createdAt)
+    if (!groups.has(label)) groups.set(label, [])
+    groups.get(label)!.push(conv)
+  }
+
+  return order
+    .filter((label) => groups.has(label))
+    .map((label) => ({ label, items: groups.get(label)! }))
 }
 
 export function AppSidebar({
@@ -211,11 +222,11 @@ export function AppSidebar({
           <div className="shrink-0">
             <SidebarGroup>
               <SidebarGroupLabel
-                className="flex items-center justify-between cursor-pointer"
+                className="flex items-center justify-between cursor-pointer !text-sm !font-semibold !text-foreground"
                 onClick={() => setPersonasExpanded(!personasExpanded)}
               >
                 <div className="flex items-center gap-1.5">
-                  <ChevronRightIcon className={`size-3 transition-transform ${personasExpanded ? "rotate-90" : ""}`} />
+                  <ChevronRightIcon className={`size-3.5 transition-transform ${personasExpanded ? "rotate-90" : ""}`} />
                   <span>Personas</span>
                 </div>
                 <Button
@@ -234,7 +245,7 @@ export function AppSidebar({
               <SidebarGroupContent>
                 {personasExpanded ? (
                   <>
-                    <SidebarMenu>
+                    <SidebarMenu className="gap-1.5">
                       {defaultPersonas.map((persona) => (
                         <PersonaRow
                           key={persona.id}
@@ -245,10 +256,11 @@ export function AppSidebar({
                     </SidebarMenu>
                     {(customPersonas.length > 0 || pending.length > 0) && (
                       <>
-                        <div className="px-2 pt-2 pb-1">
-                          <p className="text-xs text-muted-foreground font-medium">Custom</p>
+                        <div className="flex items-center gap-2 px-1 pt-3 pb-1">
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium">Custom</p>
+                          <div className="flex-1 h-px bg-border/50" />
                         </div>
-                        <SidebarMenu>
+                        <SidebarMenu className="gap-1.5">
                           {customPersonas.map((persona) => (
                             <PersonaRow
                               key={persona.id}
@@ -311,7 +323,7 @@ export function AppSidebar({
           {/* Conversations section — scrollable */}
           <div className="flex-1 overflow-y-auto min-h-0">
             <SidebarGroup>
-              <SidebarGroupLabel className="flex items-center justify-between">
+              <SidebarGroupLabel className="flex items-center justify-between !text-sm !font-semibold !text-foreground">
                 <span>Conversations</span>
                 <Button
                   variant="ghost"
@@ -324,52 +336,48 @@ export function AppSidebar({
                 </Button>
               </SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu>
-                  {conversations.length === 0 ? (
-                    <SidebarMenuItem>
-                      <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                        No conversations yet
-                      </p>
-                    </SidebarMenuItem>
-                  ) : (
-                    conversations.map((conv) => (
-                      <SidebarMenuItem key={conv.id}>
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => onSelectConversation(conv.id)}
-                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelectConversation(conv.id) }}
-                          className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-left group transition-colors cursor-pointer ${
-                            conv.id === activeConversationId
-                              ? "bg-secondary"
-                              : "hover:bg-secondary/50"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                            <div className="min-w-0">
-                              <p className="text-sm truncate">{conv.title}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {timeAgo(conv.createdAt)}
-                              </p>
+                {conversations.length === 0 ? (
+                  <p className="px-3 py-1.5 text-xs text-muted-foreground">
+                    No conversations yet
+                  </p>
+                ) : (
+                  groupConversationsByDate(conversations).map((group) => (
+                    <div key={group.label}>
+                      <div className="flex items-center gap-2 px-3 pt-2 pb-1">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium">{group.label}</p>
+                        <div className="flex-1 h-px bg-border/50" />
+                      </div>
+                      <SidebarMenu>
+                        {group.items.map((conv) => (
+                          <SidebarMenuItem key={conv.id}>
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => onSelectConversation(conv.id)}
+                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelectConversation(conv.id) }}
+                              className={`flex items-center justify-between w-full px-3 py-2 rounded-md text-left group transition-colors cursor-pointer ${
+                                conv.id === activeConversationId
+                                  ? "bg-secondary"
+                                  : "hover:bg-secondary/50"
+                              }`}
+                            >
+                              <p className="text-sm truncate min-w-0">{conv.title}</p>
+                              <button
+                                className="size-6 flex items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-all shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setConfirmDeleteId(conv.id)
+                                }}
+                              >
+                                <TrashIcon className="size-3" />
+                              </button>
                             </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setConfirmDeleteId(conv.id)
-                            }}
-                          >
-                            <TrashIcon className="size-3" />
-                          </Button>
-                        </div>
-                      </SidebarMenuItem>
-                    ))
-                  )}
-                </SidebarMenu>
+                          </SidebarMenuItem>
+                        ))}
+                      </SidebarMenu>
+                    </div>
+                  ))
+                )}
               </SidebarGroupContent>
             </SidebarGroup>
           </div>
@@ -534,34 +542,32 @@ function PersonaRow({
 }) {
   return (
     <SidebarMenuItem>
-      <div className="flex items-center justify-between px-2 py-1.5 w-full group">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-base shrink-0">{persona.emoji}</span>
+      <div className={`flex items-center justify-between w-full group rounded-lg border px-3 py-2.5 transition-colors ${
+        persona.active ? "border-white/10 bg-white/[0.03]" : "border-transparent bg-transparent"
+      }`}>
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-2xl shrink-0">{persona.emoji}</span>
           <div className="min-w-0">
-            <p className="text-sm font-medium truncate">{persona.name}</p>
+            <p className="text-sm font-semibold truncate">{persona.name}</p>
             <p className="text-xs text-muted-foreground">{persona.role}</p>
           </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {onEdit && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            <button
+              className="size-7 flex items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
               onClick={onEdit}
             >
-              <PencilIcon className="size-3" />
-            </Button>
+              <PencilIcon className="size-3.5" />
+            </button>
           )}
           {onRemove && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            <button
+              className="size-7 flex items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"
               onClick={onRemove}
             >
-              <TrashIcon className="size-3" />
-            </Button>
+              <TrashIcon className="size-3.5" />
+            </button>
           )}
           <Switch
             checked={persona.active}
