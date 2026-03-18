@@ -299,7 +299,7 @@ export default function Home() {
         <header className="flex h-12 items-center justify-between border-b px-4">
           <div className="flex items-center gap-2">
             <SidebarTrigger />
-            <h1 className="text-sm font-medium">Fray</h1>
+            <h1 className="text-sm font-semibold" style={{ fontFamily: 'var(--font-sora)' }}>Fray</h1>
           </div>
           <div className="flex items-center gap-3">
             <button

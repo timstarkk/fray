@@ -210,7 +210,10 @@ export function AppSidebar({
       <Sidebar>
         <SidebarHeader className="p-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Fray</h2>
+            <div className="flex items-center gap-2">
+              <img src="/logo.png" alt="Fray" className="h-6" />
+              <h2 className="text-lg font-semibold" style={{ fontFamily: 'var(--font-sora)' }}>Fray</h2>
+            </div>
             <Badge variant="secondary" className="text-xs">
               {activeCount} active
             </Badge>

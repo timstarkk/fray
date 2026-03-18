@@ -114,7 +114,7 @@ function SignupForm() {
   return (
     <div className="w-full max-w-sm space-y-6 px-4">
       <div className="space-y-2 text-center">
-        <h1 className="text-2xl font-bold">Fray</h1>
+        <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-sora)' }}>Fray</h1>
         <p className="text-sm text-muted-foreground">Create an account</p>
       </div>
 
