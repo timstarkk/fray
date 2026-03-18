@@ -102,7 +102,7 @@ function SignupForm() {
           <button
             type="submit"
             disabled={loading}
-            className="flex w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="flex w-full items-center justify-center rounded-md bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
           >
             {loading ? "Verifying..." : "Verify"}
           </button>
@@ -113,7 +113,8 @@ function SignupForm() {
 
   return (
     <div className="w-full max-w-sm space-y-6 px-4">
-      <div className="space-y-2 text-center">
+      <div className="space-y-3 text-center">
+        <img src="/logo.png" alt="Fray" className="h-10 mx-auto" />
         <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-sora)' }}>Fray</h1>
         <p className="text-sm text-muted-foreground">Create an account</p>
       </div>
@@ -156,7 +157,7 @@ function SignupForm() {
         <button
           type="submit"
           disabled={loading}
-          className="flex w-full items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          className="flex w-full items-center justify-center rounded-md bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90 disabled:opacity-50"
         >
           {loading ? "Creating account..." : "Sign up"}
         </button>
@@ -174,7 +175,7 @@ function SignupForm() {
 
 export default function SignupPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: '#1a1a1a' }}>
       <Suspense>
         <SignupForm />
       </Suspense>
