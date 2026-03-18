@@ -18,7 +18,7 @@ export function PersonaThinking({ persona }: PersonaThinkingProps) {
         <span className={`text-sm font-semibold ${colors.name}`}>
           {persona.name}
         </span>
-        <div className={`${colors.bubble} rounded-2xl rounded-tl-md px-4 py-2.5 mt-1`}>
+        <div className={`${colors.bubble} rounded-2xl rounded-tl-md px-4 py-2.5 mt-1 w-fit`}>
           <TypingLoader size="sm" />
         </div>
       </div>

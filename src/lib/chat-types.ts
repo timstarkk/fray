@@ -1,5 +1,15 @@
 import { type PersonaResponse } from "./schema"
 
+export type DbMessage = {
+  id: string
+  personaId: string | null
+  content: string
+  responseType: string | null
+  addressedTo: string | null
+  addressedPersonaId: string | null
+  createdAt: Date | string
+}
+
 export type ChatMessage =
   | {
       id: string

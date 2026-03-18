@@ -2,27 +2,14 @@ import { generateText } from "ai"
 import type { LanguageModel } from "ai"
 import { prisma } from "@/lib/db"
 import { type Persona } from "@/lib/personas"
-
-const COMPACTION_THRESHOLD = 0.8 // compact at 80% of context window
-const RECENT_BUDGET_RATIO = 0.2 // keep ~20% of context budget for recent messages
-
-type DbMessage = {
-  id: string
-  personaId: string | null
-  content: string
-  responseType: string | null
-  addressedTo: string | null
-  addressedPersonaId: string | null
-  createdAt: Date
-}
-
-function estimateTokens(messages: DbMessage[]): number {
-  let chars = 0
-  for (const m of messages) {
-    chars += m.content.length
-  }
-  return Math.ceil(chars / 4)
-}
+import { type DbMessage } from "@/lib/chat-types"
+import {
+  estimateTokens,
+  shouldCompact,
+  splitForCompaction,
+  buildCompactionText,
+  COMPACTION_SYSTEM_PROMPT,
+} from "@/lib/compaction-utils"
 
 export async function compactIfNeeded(
   dbMessages: DbMessage[],
@@ -32,78 +19,36 @@ export async function compactIfNeeded(
   personas: Persona[]
 ): Promise<{ messages: DbMessage[]; compacted: boolean }> {
   const estimatedTokens = estimateTokens(dbMessages)
-  const threshold = Math.floor(contextLength * COMPACTION_THRESHOLD)
 
-  console.log(`[compaction] estimated=${estimatedTokens} threshold=${threshold} contextLength=${contextLength}`)
+  console.log(`[compaction] estimated=${estimatedTokens} threshold=${Math.floor(contextLength * 0.8)} contextLength=${contextLength}`)
 
-  if (estimatedTokens < threshold) {
+  if (!shouldCompact(dbMessages, contextLength)) {
     return { messages: dbMessages, compacted: false }
   }
 
-  // Check if we already have a summary — if so, the conversation was
-  // compacted before. We need to re-summarize including the old summary
-  // since more messages have accumulated.
+  const split = splitForCompaction(dbMessages, contextLength)
+  if (!split) {
+    return { messages: dbMessages, compacted: false }
+  }
+
+  const { older: olderMessages, recent: recentMessages } = split
+
   const existingSummaryIdx = dbMessages.findIndex(
     (m) => m.responseType === "summary"
   )
 
-  // Determine split point: keep recent messages worth ~20% of context budget
-  const recentBudget = Math.floor(contextLength * RECENT_BUDGET_RATIO)
-  let recentTokens = 0
-  let splitIdx = dbMessages.length
-
-  for (let i = dbMessages.length - 1; i >= 0; i--) {
-    const msgTokens = Math.ceil(dbMessages[i].content.length / 4)
-    if (recentTokens + msgTokens > recentBudget) break
-    recentTokens += msgTokens
-    splitIdx = i
-  }
-
-  // Don't compact if there aren't enough old messages to summarize
-  if (splitIdx <= 1) {
-    return { messages: dbMessages, compacted: false }
-  }
-
-  const olderMessages = dbMessages.slice(0, splitIdx)
-  const recentMessages = dbMessages.slice(splitIdx)
-
-  // Build conversation text for summarization
-  const personaMap = new Map(personas.map((p) => [p.id, p]))
-  const conversationText = olderMessages
-    .filter((m) => m.responseType !== "summary")
-    .map((m) => {
-      if (m.personaId === null) {
-        return `User: ${m.content}`
-      }
-      const persona = personaMap.get(m.personaId)
-      const label = persona
-        ? `${persona.emoji} ${persona.name}`
-        : "Persona"
-      return `${label}: ${m.content}`
-    })
-    .join("\n\n")
-
-  // Include old summary in the text if one existed
-  const oldSummary = existingSummaryIdx >= 0
-    ? `[Previous summary: ${dbMessages[existingSummaryIdx].content}]\n\n`
-    : ""
+  const compactionText = buildCompactionText(olderMessages, personas)
 
   console.log(`[compaction] summarizing ${olderMessages.length} older messages, keeping ${recentMessages.length} recent`)
 
   try {
     const result = await generateText({
       model: resolvedModel,
-      system: `Summarize this group chat conversation concisely. Preserve:
-- Key topics discussed and conclusions reached
-- Each persona's stated positions and disagreements
-- Any decisions or action items
-- Important facts, links, or data shared
-
-Format as a narrative summary, not bullet points. Keep it under 500 words.`,
+      system: COMPACTION_SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
-          content: `${oldSummary}Conversation:\n${conversationText}`,
+          content: compactionText,
         },
       ],
       maxOutputTokens: 1024,

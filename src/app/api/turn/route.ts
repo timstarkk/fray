@@ -12,6 +12,13 @@ import { compactIfNeeded } from "@/lib/compaction"
 import { fetchAllUrls } from "@/lib/tools/url-fetch"
 import { type Persona } from "@/lib/personas"
 
+function isEmojiOnly(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  const segments = [...new Intl.Segmenter().segment(trimmed)]
+  return segments.length === 1 && /\p{Extended_Pictographic}/u.test(segments[0].segment)
+}
+
 export const maxDuration = 120
 
 function generateTitle(text: string): string {
@@ -256,6 +263,11 @@ RULES:
             }
           }
 
+          // Promote fake emoji to brief
+          if (parsed.response_type === "emoji" && !isEmojiOnly(parsed.content)) {
+            parsed.response_type = "brief"
+          }
+
           console.log(`[turn] ${persona.name} responded: type=${parsed.response_type} content=${parsed.content?.substring(0, 50)}`)
 
           // Persist non-silence response
@@ -340,6 +352,11 @@ RULES:
                 console.error(`[turn] follow-up ${persona.name} raw fallback also failed`)
                 parsed = { response_type: "silence", content: "" }
               }
+            }
+
+            // Promote fake emoji to brief
+            if (parsed.response_type === "emoji" && !isEmojiOnly(parsed.content)) {
+              parsed.response_type = "brief"
             }
 
             console.log(`[turn] follow-up ${persona.name} responded: type=${parsed.response_type} content=${parsed.content?.substring(0, 50)}`)

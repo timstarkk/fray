@@ -2,7 +2,8 @@ import { type Persona } from "./personas"
 
 export function buildPersonaSystemPrompt(
   persona: Persona,
-  allPersonas: Persona[]
+  allPersonas: Persona[],
+  options?: { jsonFormat?: boolean }
 ): string {
   const otherPersonas = allPersonas
     .filter((p) => p.id !== persona.id)
@@ -11,7 +12,7 @@ export function buildPersonaSystemPrompt(
 
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
 
-  return `You are ${persona.name} in a group chat. ${persona.systemPrompt}
+  let prompt = `You are ${persona.name} in a group chat. ${persona.systemPrompt}
 
 Today's date is ${today}.
 
@@ -48,4 +49,26 @@ Decide what to do:
 - If [WEB SEARCH RESULTS] are provided in the conversation, use those facts when relevant and cite sources naturally (mention the source or include the URL). Do not claim you searched — the results were provided to you.
 
 /no_think`
+
+  if (options?.jsonFormat) {
+    prompt += `
+
+## Response Format
+
+You MUST respond with a valid JSON object. No text outside the JSON. The object has these fields:
+
+{
+  "response_type": "full" | "brief" | "emoji" | "silence",
+  "content": "your response text (empty string for silence)",
+  "addressed_to": "user" | "persona" (optional, default "user"),
+  "addressed_persona_id": "persona-id" (only if addressed_to is "persona")
+}
+
+Rules:
+- response_type is required: "full" for substantive response, "brief" for one-sentence acknowledgment, "emoji" for a single emoji reaction, "silence" for nothing to add
+- content is required: your text for full/brief, a single emoji for emoji type, empty string for silence
+- addressed_to and addressed_persona_id are optional`
+  }
+
+  return prompt
 }

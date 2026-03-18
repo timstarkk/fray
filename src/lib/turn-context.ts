@@ -1,14 +1,5 @@
 import { type Persona } from "./personas"
-
-type DbMessage = {
-  id: string
-  personaId: string | null
-  content: string
-  responseType: string | null
-  addressedTo: string | null
-  addressedPersonaId: string | null
-  createdAt: Date
-}
+import { type DbMessage } from "./chat-types"
 
 type TurnResponse = {
   personaId: string

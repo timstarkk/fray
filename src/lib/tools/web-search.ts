@@ -3,7 +3,7 @@ import { z } from "zod"
 
 const SEARCH_TIMEOUT_MS = 8000
 
-async function fetchSearchResults(query: string): Promise<string> {
+export async function fetchSearchResults(query: string): Promise<string> {
   const url = process.env.SEARXNG_URL
   if (!url) {
     console.error("[web-search] SEARXNG_URL not set")

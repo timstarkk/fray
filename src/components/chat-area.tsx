@@ -12,7 +12,7 @@ import {
   PromptInputActions,
 } from "@/components/ui/prompt-input"
 import { Button } from "@/components/ui/button"
-import { ArrowUpIcon, ChevronDownIcon, MonitorIcon, CloudIcon, SettingsIcon, GlobeIcon } from "lucide-react"
+import { ArrowUpIcon, ChevronDownIcon, MonitorIcon, CloudIcon, SettingsIcon, GlobeIcon, ShieldCheckIcon } from "lucide-react"
 import { type ChatMessage } from "@/lib/chat-types"
 import { type Persona } from "@/lib/personas"
 import { getPersonaColors } from "@/lib/colors"
