@@ -59,7 +59,7 @@ function SignupForm() {
 
       if (isSignedIn) {
         await fetch("/api/auth/sync", { method: "POST" })
-        router.push("/")
+        router.push("/chat")
         router.refresh()
       }
     } catch (err) {

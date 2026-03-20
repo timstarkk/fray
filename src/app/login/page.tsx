@@ -25,7 +25,7 @@ export default function LoginPage() {
 
       if (isSignedIn) {
         await syncUser()
-        router.push("/")
+        router.push("/chat")
         router.refresh()
       } else if (nextStep.signInStep === "CONFIRM_SIGN_UP") {
         router.push(`/signup?email=${encodeURIComponent(email)}&confirm=true`)
